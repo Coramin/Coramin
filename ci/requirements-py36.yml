@@ -5,6 +5,9 @@ dependencies:
     - python=3.6
     - numpy
     - scipy
+    - ipopt
+    - glpk
+    - mpi4py
     - nose
     - pip:
         - coveralls
