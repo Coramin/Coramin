@@ -1,3 +1,4 @@
+dist: xenial
 language: python
 sudo: false # if false, use TravisCI's container based build
 
