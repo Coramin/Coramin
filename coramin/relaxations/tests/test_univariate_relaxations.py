@@ -156,3 +156,24 @@ class TestFeasibility(unittest.TestCase):
         self.assertEqual(id(m.c.x_fixed_con.body), id(m.y))
         self.assertEqual(m.c.x_fixed_con.lower, 1.0)
         self.assertEqual(m.c.x_fixed_con.upper, 1.0)
+
+    def test_x_sq(self):
+        m = pe.ConcreteModel()
+        m.p = pe.Param(initialize=-1, mutable=True)
+        m.x = pe.Var(bounds=(-1, 1))
+        m.y = pe.Var()
+        m.z = pe.Var(bounds=(0, None))
+        m.c = coramin.relaxations.PWXSquaredRelaxation()
+        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH)
+        m.c2 = pe.ConstraintList()
+        m.c2.add(m.z >= m.y - m.p)
+        m.c2.add(m.z >= m.p - m.y)
+        m.obj = pe.Objective(expr=m.z)
+        opt = pe.SolverFactory('glpk')
+        for xval in [-1, -0.5, 0, 0.5, 1]:
+            pval = xval**2
+            m.x.fix(xval)
+            m.p.value = pval
+            res = opt.solve(m, tee=False)
+            self.assertTrue(res.solver.termination_condition == pe.TerminationCondition.optimal)
+            self.assertAlmostEqual(m.y.value, m.p.value, 6)
