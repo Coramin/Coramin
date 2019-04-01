@@ -1,8 +1,8 @@
 import logging
 import pyomo.environ as pyo
-from coramin.utils import RelaxationSide, FunctionShape
-from coramin.relaxations.custom_block import declare_custom_block
-from coramin.relaxations.relaxations_base import BaseRelaxationData, ComponentWeakRef
+from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
+from .custom_block import declare_custom_block
+from .relaxations_base import BaseRelaxationData, ComponentWeakRef
 
 logger = logging.getLogger(__name__)
 

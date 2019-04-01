@@ -1,12 +1,12 @@
 import pyomo.environ as pyo
-from coramin.utils import RelaxationSide, FunctionShape
-from coramin.relaxations.relaxations_base import BasePWRelaxationData, ComponentWeakRef
+from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
+from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
 import warnings
-from coramin.relaxations.custom_block import declare_custom_block
+from .custom_block import declare_custom_block
 import numpy as np
 import math
 import scipy.optimize
-import coramin.relaxations._utils as _utils
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
 from pyomo.opt import SolverStatus, TerminationCondition
 import logging
 from pyomo.contrib.derivatives.differentiate import reverse_sd, reverse_ad
@@ -151,7 +151,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
     """
     _eval = _FxExpr(expr=f_x_expr, x=x)
 
-    _utils.check_var_pts(x, x_pts)
+    check_var_pts(x, x_pts)
 
     if shape not in {FunctionShape.CONCAVE, FunctionShape.CONVEX}:
         e = 'pw_univariate_relaxation: shape must be either FunctionShape.CONCAVE or FunctionShape.CONVEX'
@@ -241,7 +241,7 @@ def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=Relax
     xub = pyo.value(x.ub)
     xlb = pyo.value(x.lb)
 
-    _utils.check_var_pts(x, x_pts)
+    check_var_pts(x, x_pts)
 
     if use_nonlinear_underestimator and (relaxation_side == RelaxationSide.OVER):
         e = 'pw_x_squared_relaxation: if use_nonlinear_underestimator is True, then ' + \
@@ -297,18 +297,18 @@ def pw_cos_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
     """
     _eval = _FxExpr(expr=pyo.cos(x), x=x)
 
-    _utils.check_var_pts(x, x_pts)
+    check_var_pts(x, x_pts)
 
     xlb = pyo.value(x.lb)
     xub = pyo.value(x.ub)
 
     if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + _utils.var_info_str(x) + _utils.bnds_info_str(xlb, xub)
+        e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
         logger.error(e)
         raise ValueError(e)
 
     if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:\n' + _utils.var_info_str(x) + _utils.bnds_info_str(xlb, xub)
+        e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
         logger.error(e)
         raise ValueError(e)
 
@@ -359,19 +359,19 @@ def pw_sin_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
         amount to lift the overestimator or drop the underestimator. This is used to ensure none of the feasible
         region is cut off by error in computing the over and under estimators.
     """
-    _utils.check_var_pts(x, x_pts)
+    check_var_pts(x, x_pts)
     expr = pyo.sin(x)
 
     xlb = pyo.value(x.lb)
     xub = pyo.value(x.ub)
 
     if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:' + _utils.var_info_str(x) + _utils.bnds_info_str(xlb, xub)
+        e = 'Lower Bound on x must be greater than or equal to -pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
         logger.error(e)
         raise ValueError(e)
 
     if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:' + _utils.var_info_str(x) + _utils.bnds_info_str(xlb, xub)
+        e = 'Upper Bound on x must be less than or equal to pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
         logger.error(e)
         raise ValueError(e)
 
@@ -509,7 +509,7 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
         amount to lift the overestimator or drop the underestimator. This is used to ensure none of the feasible
         region is cut off by error in computing the over and under estimators.
     """
-    _utils.check_var_pts(x, x_pts)
+    check_var_pts(x, x_pts)
     expr = pyo.atan(x)
     _eval = _FxExpr(expr, x)
 
@@ -954,14 +954,14 @@ class PWCosRelaxationData(BasePWRelaxationData):
         xub = pyo.value(x.ub)
 
         if xlb < -np.pi / 2.0:
-            e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + _utils.var_info_str(
-                x) + _utils.bnds_info_str(xlb, xub)
+            e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(
+                x) + bnds_info_str(xlb, xub)
             logger.error(e)
             raise ValueError(e)
 
         if xub > np.pi / 2.0:
-            e = 'Upper Bound on x must be less than or equal to pi/2:\n' + _utils.var_info_str(
-                x) + _utils.bnds_info_str(xlb, xub)
+            e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(
+                x) + bnds_info_str(xlb, xub)
             logger.error(e)
             raise ValueError(e)
 

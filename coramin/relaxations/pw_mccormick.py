@@ -1,9 +1,9 @@
 import pyomo.environ as pyo
-from coramin.utils import RelaxationSide, FunctionShape
-import coramin.relaxations.mccormick as mccormick
-from coramin.relaxations.relaxations_base import BasePWRelaxationData, ComponentWeakRef
-from coramin.relaxations.custom_block import declare_custom_block
-import coramin.relaxations._utils as _utils
+from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
+from .mccormick import _build_mccormick_relaxation
+from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
+from .custom_block import declare_custom_block
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
 
 import logging
 logger = logging.getLogger(__name__)
@@ -36,8 +36,8 @@ def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=Relaxation
     ylb = pyo.value(y.lb)
     yub = pyo.value(y.ub)
 
-    _utils.check_var_pts(x, x_pts=x_pts)
-    _utils.check_var_pts(y)
+    check_var_pts(x, x_pts=x_pts)
+    check_var_pts(y)
 
     if x.is_fixed() and y.is_fixed():
         b.xy_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * pyo.value(y))
@@ -46,7 +46,7 @@ def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=Relaxation
     elif y.is_fixed():
         b.y_fixed_eq = pyo.Constraint(expr= w == x * pyo.value(y))
     elif len(x_pts) == 2:
-        mccormick._build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
+        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
     else:
         # create the lambda variables (binaries for the pw representation)
         b.interval_set = pyo.Set(initialize=range(1, len(x_pts)))
@@ -102,9 +102,18 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
     Examples
     --------
     Example 1: w_i = x_i * y_i
+    >>> import coramin
+    >>> import pyomo.environ as pe
+    >>>
+    >>> m = pe.ConcreteModel()
+    >>> a = [1,2,3]
+    >>> m.x = pe.Var(a, bounds=(-1,1))
+    >>> m.y = pe.Var(a, bounds=(-1,1))
+    >>> m.w = pe.Var(a)
+    >>>
     >>> def c_rule(b, i):
-    >>>     b.build(relaxation_side=RelaxationSide.BOTH, x=model.x[i], y=model.y[i], w=model.w[i])
-    >>> model.foo = PWMcCormickRelaxation(model.IDX, rule=c_rule)
+    ...     b.build(relaxation_side=RelaxationSide.BOTH, x=m.x[i], y=m.y[i], w=m.w[i])
+    >>> m.mcc = coramin.relaxations.PWMcCormickRelaxation(a, rule=c_rule)
     """
 
     def __init__(self, component):

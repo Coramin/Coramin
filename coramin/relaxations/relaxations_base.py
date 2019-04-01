@@ -1,9 +1,10 @@
 from pyomo.core.base.block import _BlockData
-from coramin.relaxations.custom_block import declare_custom_block
+from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
 from collections import Iterable
-from coramin.utils import OrderedIDDict, OrderedSet, FunctionShape, RelaxationSide
+from coramin.utils.ordered_containers import OrderedIDDict, OrderedSet
+from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
 pyo = pe
 import warnings
 import logging

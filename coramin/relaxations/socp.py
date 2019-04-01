@@ -1,11 +1,11 @@
 import pyomo.environ as pyo
-from coramin.utils import FunctionShape, RelaxationSide
-from coramin.relaxations.relaxations_base import BasePWRelaxationData, ComponentWeakRef
+from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
+from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
 import warnings
-from coramin.relaxations.univariate import PWXSquaredRelaxationData, pw_x_squared_relaxation
-from coramin.relaxations.pw_mccormick import PWMcCormickRelaxationData, _build_pw_mccormick_relaxation
-from coramin.relaxations.custom_block import declare_custom_block
-import coramin.relaxations._utils as _utils
+from .univariate import PWXSquaredRelaxationData, pw_x_squared_relaxation
+from .pw_mccormick import PWMcCormickRelaxationData, _build_pw_mccormick_relaxation
+from .custom_block import declare_custom_block
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,20 +22,20 @@ def _build_pw_soc_relaxation(b, x, y, z, w, x_pts, y_pts, z_pts, relaxation_side
     wlb = pyo.value(w.lb)
     wub = pyo.value(w.ub)
 
-    _utils.check_var_pts(x, x_pts)
-    _utils.check_var_pts(y, y_pts)
-    _utils.check_var_pts(z, z_pts)
-    _utils.check_var_pts(w)
+    check_var_pts(x, x_pts)
+    check_var_pts(y, y_pts)
+    check_var_pts(z, z_pts)
+    check_var_pts(w)
 
     if wlb < 0:
-        e = ('Lower bound is negative for w; not a valid second-order cone.\n' + _utils.var_info_str(
-             w) + _utils.bnds_info_str(wlb, wub))
+        e = ('Lower bound is negative for w; not a valid second-order cone.\n' + var_info_str(
+             w) + bnds_info_str(wlb, wub))
         logger.error(e)
         raise ValueError(e)
 
     if zlb < 0:
-        e = ('Lower bound is negative for z; not a valid second-order cone.\n' + _utils.var_info_str(
-             z) + _utils.bnds_info_str(zlb, zub))
+        e = ('Lower bound is negative for z; not a valid second-order cone.\n' + var_info_str(
+             z) + bnds_info_str(zlb, zub))
         logger.error(e)
         raise ValueError(e)
 
