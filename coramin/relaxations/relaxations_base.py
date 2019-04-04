@@ -291,4 +291,8 @@ class ComponentWeakRef(object):
         if comp is not None:
             self.compref = weakref.ref(comp)
 
+    def __setstate__(self, state):
+        self.set_component(state['compref'])
 
+    def __getstate__(self):
+        return {'compref': self.get_component()}
