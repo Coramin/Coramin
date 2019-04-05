@@ -3,7 +3,8 @@ from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
 from collections import Iterable
-from coramin.utils.ordered_containers import OrderedIDDict, OrderedSet
+from pyomo.core.kernel.component_map import ComponentMap
+from pyomo.core.kernel.component_set import ComponentSet
 from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
 pyo = pe
 import warnings
@@ -20,7 +21,7 @@ Base classes for relaxations
 class BaseRelaxationData(_BlockData):
     def __init__(self, component):
         _BlockData.__init__(self, component)
-        self._persistent_solvers = OrderedSet()
+        self._persistent_solvers = ComponentSet()
         self._allow_changes = False
         self._relaxation_side = RelaxationSide.BOTH
 
@@ -33,11 +34,11 @@ class BaseRelaxationData(_BlockData):
     def build(self, **kwargs):
         self._persistent_solvers = kwargs.pop('persistent_solvers', None)
         if self._persistent_solvers is None:
-            self._persistent_solvers = OrderedSet()
+            self._persistent_solvers = ComponentSet()
         if not isinstance(self._persistent_solvers, Iterable):
-            self._persistent_solvers = OrderedSet([self._persistent_solvers])
+            self._persistent_solvers = ComponentSet([self._persistent_solvers])
         else:
-            self._persistent_solvers = OrderedSet(self._persistent_solvers)
+            self._persistent_solvers = ComponentSet(self._persistent_solvers)
         self._relaxation_side = kwargs.pop('relaxation_side', RelaxationSide.BOTH)
         assert self._relaxation_side in RelaxationSide
         self._set_input(kwargs)
@@ -123,7 +124,7 @@ class BaseRelaxationData(_BlockData):
         self._persistent_solvers.remove(persistent_solver)
 
     def clear_persistent_solvers(self):
-        self._persistent_solvers = OrderedSet()
+        self._persistent_solvers = ComponentSet()
 
     def get_abs_violation(self):
         """
@@ -151,11 +152,11 @@ class BasePWRelaxationData(BaseRelaxationData):
     def __init__(self, component):
         BaseRelaxationData.__init__(self, component)
 
-        self._partitions = OrderedIDDict()
-        """OrderedIDDict: var: list of float"""
+        self._partitions = ComponentMap()
+        """ComponentMap: var: list of float"""
 
         self._saved_partitions = []
-        """list of OrderedIdDict"""
+        """list of CompnentMap"""
 
     def rebuild(self):
         """
@@ -165,7 +166,7 @@ class BasePWRelaxationData(BaseRelaxationData):
         BaseRelaxationData.rebuild(self)
 
     def build(self, **kwargs):
-        self._partitions = OrderedIDDict()
+        self._partitions = ComponentMap()
         self._saved_partitions = []
         BaseRelaxationData.build(self, **kwargs)
 
@@ -199,7 +200,7 @@ class BasePWRelaxationData(BaseRelaxationData):
         """
         Delete any existing partitioning scheme.
         """
-        tmp = OrderedIDDict()
+        tmp = ComponentMap()
         for var, pts in self._partitions.items():
             tmp[var] = [pe.value(var.lb), pe.value(var.ub)]
         self._partitions = tmp
@@ -290,4 +291,8 @@ class ComponentWeakRef(object):
         if comp is not None:
             self.compref = weakref.ref(comp)
 
+    def __setstate__(self, state):
+        self.set_component(state['compref'])
 
+    def __getstate__(self):
+        return {'compref': self.get_component()}

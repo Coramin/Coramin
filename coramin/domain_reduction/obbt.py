@@ -3,7 +3,7 @@ from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.opt import SolverStatus, TerminationCondition as TC
 import warnings
-from coramin.utils.ordered_containers import OrderedIDDict
+from pyomo.core.kernel.component_map import ComponentMap
 from pyomo.solvers.plugins.solvers.GUROBI import GUROBISHELL
 from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
 from pyomo.solvers.plugins.solvers.gurobi_persistent import GurobiPersistent
@@ -42,7 +42,7 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
     model: pyo.ConcreteModel or pyo.Block
     solver: pyomo solver object
     vardatalist: list of pyo.Var
-    initial_var_values: OrderedIDDict
+    initial_var_values: ComponentMap
     deactivated_objectives: list of pyo.Objective
     lower_bounds: list of float
         Only needed if you want to update the bounds of the variables. Should be in the same order as
@@ -188,13 +188,13 @@ def _bt_prep(model, solver, objective_ub=None):
 
     Returns
     -------
-    initial_var_values: OrderedIDDict
+    initial_var_values: ComponentMap
     deactivated_objectives: list
     """
     if isinstance(solver, PersistentSolver):
         solver.set_instance(model)
 
-    initial_var_values = OrderedIDDict()
+    initial_var_values = ComponentMap()
     for v in model.component_data_objects(ctype=pyo.Var, active=None, sort=True, descend_into=True):
         initial_var_values[v] = v.value
 
