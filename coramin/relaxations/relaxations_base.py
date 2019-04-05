@@ -31,7 +31,7 @@ class BaseRelaxationData(_BlockData):
         else:
             raise RuntimeError('Pyomo components cannot be added to objects of type {0}.'.format(type(self)))
 
-    def build(self, **kwargs):
+    def set_input(self, **kwargs):
         self._persistent_solvers = kwargs.pop('persistent_solvers', None)
         if self._persistent_solvers is None:
             self._persistent_solvers = ComponentSet()
@@ -42,6 +42,9 @@ class BaseRelaxationData(_BlockData):
         self._relaxation_side = kwargs.pop('relaxation_side', RelaxationSide.BOTH)
         assert self._relaxation_side in RelaxationSide
         self._set_input(kwargs)
+
+    def build(self, **kwargs):
+        self.set_input(**kwargs)
         self.rebuild()
         if len(kwargs) != 0:
             msg = 'Unexpected keyword arguments in build:\n'
@@ -92,6 +95,13 @@ class BaseRelaxationData(_BlockData):
         self._add_to_persistent_solvers()
         self._allow_changes = False
 
+    def rebuild_nonlinear(self):
+        self._allow_changes = True
+        self.remove_relaxation()
+        self._build_nonlinear()
+        self._add_to_persistent_solvers()
+        self._allow_changes = False
+
     def _set_input(self, kwargs):
         """
         Subclasses should implement this method. This method is intended to initialize the data needed for
@@ -103,6 +113,12 @@ class BaseRelaxationData(_BlockData):
     def _build_relaxation(self):
         """
         Build the auto-created vars/constraints that form the relaxation
+        """
+        raise NotImplementedError('This should be implemented in the derived class.')
+
+    def _build_nonlinear(self):
+        """
+        Build the nonlinear constraint.
         """
         raise NotImplementedError('This should be implemented in the derived class.')
 
