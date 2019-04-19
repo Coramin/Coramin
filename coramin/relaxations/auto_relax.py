@@ -1,16 +1,12 @@
 import pyomo.environ as pe
 from pyomo.core.kernel.component_map import ComponentMap
-from pyomo.core.kernel.component_set import ComponentSet
-import pyomo.core.expr.expr_pyomo5 as _expr
-from pyomo.core.expr.expr_pyomo5 import (ExpressionValueVisitor,
-                                         nonpyomo_leaf_types, value,
-                                         identify_variables)
+import pyomo.core.expr.numeric_expr as numeric_expr
+from pyomo.core.expr.visitor import ExpressionValueVisitor, identify_variables
+from pyomo.core.expr.numvalue import nonpyomo_leaf_types, value
 from pyomo.core.expr.numvalue import is_fixed, polynomial_degree, is_constant
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr, fbbt
 import math
-from pyomo.core.base.block import Block
 from pyomo.core.base.constraint import Constraint
-from pyomo.core.base.var import Var
 import logging
 from .univariate import PWUnivariateRelaxation, PWXSquaredRelaxation, PWCosRelaxation, PWSinRelaxation, PWArctanRelaxation
 from .pw_mccormick import PWMcCormickRelaxation
@@ -18,43 +14,6 @@ from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
 
 logger = logging.getLogger(__name__)
-
-if not hasattr(math, 'inf'):
-    math.inf = float('inf')
-
-
-"""
-The purpose of this file is to perform feasibility based bounds 
-tightening. This is a very basic implementation, but it is done 
-directly with pyomo expressions. The only functions that are meant to 
-be used by users are fbbt, fbbt_con, and fbbt_block. The first set of 
-functions in this file (those with names starting with 
-_prop_bnds_leaf_to_root) are used for propagating bounds from the  
-variables to each node in the expression tree (all the way to the  
-root node). The second set of functions (those with names starting 
-with _prop_bnds_root_to_leaf) are used to propagate bounds from the 
-constraint back to the variables. For example, consider the constraint 
-x*y + z == 1 with -1 <= x <= 1 and -2 <= y <= 2. When propagating 
-bounds from the variables to the root (the root is x*y + z), we find 
-that -2 <= x*y <= 2, and that -inf <= x*y + z <= inf. However, 
-from the constraint, we know that 1 <= x*y + z <= 1, so we may 
-propagate bounds back to the variables. Since we know that 
-1 <= x*y + z <= 1 and -2 <= x*y <= 2, then we must have -1 <= z <= 3. 
-However, bounds cannot be improved on x*y, so bounds cannot be 
-improved on either x or y.
-
->>> import pyomo.environ as pe
->>> m = pe.ConcreteModel()
->>> m.x = pe.Var(bounds=(-1,1))
->>> m.y = pe.Var(bounds=(-2,2))
->>> m.z = pe.Var()
->>> from pyomo.contrib.fbbt.fbbt import fbbt
->>> m.c = pe.Constraint(expr=m.x*m.y + m.z == 1)
->>> fbbt(m)
->>> print(m.z.lb, m.z.ub)
--1.0 3.0
-
-"""
 
 
 class RelaxationException(Exception):
@@ -133,7 +92,7 @@ def _relax_quadratic(arg1, aux_var_map, relaxation_side, degree_map, parent_bloc
         return _aux_var
 
 
-def _relax_convex_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, parent_block, counter):
+def _relax_convex_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, parent_block, counter, swap=False):
     if (id(arg1), id(arg2), 'pow') in aux_var_map:
         _aux_var, relaxation = aux_var_map[id(arg1), id(arg2), 'pow']
         if relaxation_side != relaxation.relaxation_side:
@@ -141,10 +100,15 @@ def _relax_convex_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, pare
         return _aux_var
     else:
         _aux_var = parent_block.aux_vars.add()
-        arg1 = replace_sub_expression_with_aux_var(arg1, parent_block)
+        if swap:
+            arg2 = replace_sub_expression_with_aux_var(arg2, parent_block)
+            _x = arg2
+        else:
+            arg1 = replace_sub_expression_with_aux_var(arg1, parent_block)
+            _x = arg1
         degree_map[_aux_var] = 1
         relaxation = PWUnivariateRelaxation()
-        relaxation.set_input(x=arg1, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
+        relaxation.set_input(x=_x, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
                              shape=FunctionShape.CONVEX)
         aux_var_map[id(arg1), id(arg2), 'pow'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel' + str(counter), relaxation)
@@ -246,11 +210,28 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
                                          relaxation_side=relaxation_side_map[node], degree_map=degree_map,
                                          parent_block=parent_block, counter=counter)
     elif degree1 == 0:
+        if not is_constant(arg1):
+            logger.warning('Found {0} raised to a variable power. However, {0} does not appear to be constant (maybe '
+                           'it is or depends on a mutable Param?). Replacing {0} with its value.'.format(str(arg1)))
+            arg1 = pe.value(arg1)
+        if arg1 < 0:
+            raise ValueError('Cannot raise a negative base to a variable exponent: ' + str(arg1**arg2))
         return _relax_convex_pow(arg1=arg1, arg2=arg2, aux_var_map=aux_var_map,
                                  relaxation_side=relaxation_side_map[node], degree_map=degree_map,
-                                 parent_block=parent_block, counter=counter)
+                                 parent_block=parent_block, counter=counter, swap=True)
     else:
-
+        if (id(arg1), id(arg2), 'pow') in aux_var_map:
+            _aux_var, relaxation = aux_var_map[id(arg1), id(arg2), 'pow']
+            if relaxation_side_map[node] != relaxation.relaxation_side:
+                relaxation.relaxation_side = RelaxationSide.BOTH
+            return _aux_var
+        else:
+            assert compute_bounds_on_expr(arg1)[0] >= 0
+            _new_relaxation_side_map = ComponentMap()
+            _reformulated = pe.exp(arg2 * pe.log(arg1))
+            _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
+            return _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
+                               relaxation_side_map=_new_relaxation_side_map, counter=counter)
 
 
 def _relax_leaf_to_root_SumExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
@@ -267,10 +248,11 @@ def _relax_leaf_to_root_NegationExpression(node, values, aux_var_map, degree_map
 
 
 _relax_leaf_to_root_map = dict()
-_relax_leaf_to_root_map[_expr.ProductExpression] = _relax_leaf_to_root_ProductExpression
-_relax_leaf_to_root_map[_expr.SumExpression] = _relax_leaf_to_root_SumExpression
-_relax_leaf_to_root_map[_expr.MonomialTermExpression] = _relax_leaf_to_root_ProductExpression
-_relax_leaf_to_root_map[_expr.NegationExpression] = _relax_leaf_to_root_NegationExpression
+_relax_leaf_to_root_map[numeric_expr.ProductExpression] = _relax_leaf_to_root_ProductExpression
+_relax_leaf_to_root_map[numeric_expr.SumExpression] = _relax_leaf_to_root_SumExpression
+_relax_leaf_to_root_map[numeric_expr.MonomialTermExpression] = _relax_leaf_to_root_ProductExpression
+_relax_leaf_to_root_map[numeric_expr.NegationExpression] = _relax_leaf_to_root_NegationExpression
+_relax_leaf_to_root_map[numeric_expr.PowExpression] = _relax_leaf_to_root_PowExpression
 
 
 def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
@@ -305,10 +287,11 @@ def _relax_root_to_leaf_PowExpression(node, relaxations_side_map):
 
 
 _relax_root_to_leaf_map = dict()
-_relax_root_to_leaf_map[_expr.ProductExpression] = _relax_root_to_leaf_ProductExpression
-_relax_root_to_leaf_map[_expr.SumExpression] = _relax_root_to_leaf_SumExpression
-_relax_root_to_leaf_map[_expr.MonomialTermExpression] = _relax_root_to_leaf_ProductExpression
-_relax_root_to_leaf_map[_expr.NegationExpression] = _relax_root_to_leaf_NegationExpression
+_relax_root_to_leaf_map[numeric_expr.ProductExpression] = _relax_root_to_leaf_ProductExpression
+_relax_root_to_leaf_map[numeric_expr.SumExpression] = _relax_root_to_leaf_SumExpression
+_relax_root_to_leaf_map[numeric_expr.MonomialTermExpression] = _relax_root_to_leaf_ProductExpression
+_relax_root_to_leaf_map[numeric_expr.NegationExpression] = _relax_root_to_leaf_NegationExpression
+_relax_root_to_leaf_map[numeric_expr.PowExpression] = _relax_root_to_leaf_PowExpression
 
 
 class _FactorableRelaxationVisitor(ExpressionValueVisitor):
@@ -359,6 +342,7 @@ def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter):
 
 def relax(model, descend_into=None):
     m = model.clone()
+    fbbt(m)
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)
@@ -367,8 +351,10 @@ def relax(model, descend_into=None):
     counter_dict = dict()
 
     for c in m.component_data_objects(ctype=Constraint, active=True, descend_into=descend_into, sort=True):
-        if polynomial_degree(c.body) <= 1:
-            continue
+        body_degree = polynomial_degree(c.body)
+        if body_degree is not None:
+            if body_degree <= 1:
+                continue
 
         if c.lower is not None and c.upper is not None:
             relaxation_side = RelaxationSide.BOTH
