@@ -6,7 +6,7 @@ from .custom_block import declare_custom_block
 import numpy as np
 import math
 import scipy.optimize
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list
 from pyomo.opt import SolverStatus, TerminationCondition
 import logging
 from pyomo.contrib.derivatives.differentiate import reverse_sd, reverse_ad
@@ -174,30 +174,44 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
 
         if pw_constr_type is not None:
             # Build the piecewise side of the envelope
-            b.pw_linear_under_over = pyo.Piecewise(w, x,
-                                                   pw_pts=x_pts,
-                                                   pw_repn=pw_repn,
-                                                   pw_constr_type=pw_constr_type,
-                                                   f_rule=_func_wrapper(_eval)
-                                                   )
+            if x_pts[0] > -math.inf and x_pts[-1] < math.inf:
+                b.pw_linear_under_over = pyo.Piecewise(w, x,
+                                                       pw_pts=x_pts,
+                                                       pw_repn=pw_repn,
+                                                       pw_constr_type=pw_constr_type,
+                                                       f_rule=_func_wrapper(_eval)
+                                                       )
+
         non_pw_constr_type = None
         if shape == FunctionShape.CONVEX and relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
             non_pw_constr_type = 'LB'
         if shape == FunctionShape.CONCAVE and relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             non_pw_constr_type = 'UB'
 
+        if x_pts[0] == -math.inf:
+            if x_pts[1] == math.inf:
+                x_pts[0] = -1
+                x_pts[1] = 1
+            else:
+                x_pts[0] = x_pts[1] - 1
+        if x_pts[-1] == math.inf:
+            x_pts[-1] = x_pts[-2] + 1
+
         if non_pw_constr_type is not None:
             # Build the non-piecewise side of the envelope
             b.linear_under_over = pyo.ConstraintList()
             for _x in x_pts:
-                w_at_pt = _eval(_x)
-                m_at_pt = _eval.deriv(_x)
-                b_at_pt = w_at_pt - m_at_pt * _x
-                if non_pw_constr_type == 'LB':
-                    b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
-                else:
-                    assert non_pw_constr_type == 'UB'
-                    b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
+                try:
+                    w_at_pt = _eval(_x)
+                    m_at_pt = _eval.deriv(_x)
+                    b_at_pt = w_at_pt - m_at_pt * _x
+                    if non_pw_constr_type == 'LB':
+                        b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
+                    else:
+                        assert non_pw_constr_type == 'UB'
+                        b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
+                except (ZeroDivisionError, ValueError):
+                    pass
 
 
 def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
@@ -237,9 +251,6 @@ def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=Relax
     # exception for OVER/True
     # change UNDER/True to None/True
     # change BOTH/True  to OVER/True
-
-    xub = pyo.value(x.ub)
-    xlb = pyo.value(x.lb)
 
     check_var_pts(x, x_pts)
 
@@ -674,7 +685,7 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         pw_x_squared_relaxation(self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -816,7 +827,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         pw_univariate_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x], f_x_expr=self._f_x_expr,
@@ -970,7 +981,7 @@ class PWCosRelaxationData(BasePWRelaxationData):
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         pw_cos_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1107,7 +1118,7 @@ class PWSinRelaxationData(BasePWRelaxationData):
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         pw_sin_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1222,7 +1233,7 @@ class PWArctanRelaxationData(BasePWRelaxationData):
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         pw_arctan_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
