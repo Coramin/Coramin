@@ -386,6 +386,7 @@ def relax(model, descend_into=None):
         parent_block.del_component(c)
 
     for _aux_var, relaxation in aux_var_map.values():
+        relaxation.use_linear_relaxation = True
         relaxation.rebuild()
 
     return m

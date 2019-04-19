@@ -150,6 +150,8 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
     """
     _eval = _FxExpr(expr=f_x_expr, x=x)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     check_var_pts(x, x_pts)
 
@@ -160,7 +162,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
 
     if x.is_fixed():
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
-    elif pyo.value(x.ub) == pyo.value(x.lb):
+    elif xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.lb))
     else:
         # Do the non-convex piecewise portion if shape=CONCAVE and relaxation_side=Under/BOTH

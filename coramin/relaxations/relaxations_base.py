@@ -236,8 +236,7 @@ class BasePWRelaxationData(BaseRelaxationData):
             pts.sort()
 
         for var, pts in self._partitions.items():
-            lb = pe.value(var.lb)
-            ub = pe.value(var.ub)
+            lb, ub = tuple(_get_bnds_list(var))
 
             if pts[0] < lb or pts[-1] > ub:
                 pts = [v for v in pts if (lb < v < ub)]
