@@ -77,7 +77,7 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     """
     def __init__(self, component):
         super().__init__(component)
-        self._xsref = None
+        self._xs = None
         self._wref = ComponentWeakRef(None)
         self._f_x_expr = None
         self._linear = False
@@ -89,9 +89,7 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         return self._wref.get_component()
 
     def add_point(self):
-        pts = []
-        for x in self._xsref:
-            pts.append(pyo.value(x.get_component()))
+        pts = [pyo.value(x) for x in self._xs]
         self._points.append(pts)
 
     def _set_input(self, kwargs):
@@ -103,20 +101,16 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         if not isinstance(xs, list):
             xs = [xs]
 
-        self._xsref = []
-        for x in xs:
-            xref = ComponentWeakRef(x)
-            self._xsref.append(xref)
+        self._xs = xs
         self._wref.set_component(w)
         self._f_x_expr = f_x_expr
 
     def _build_relaxation(self):
-        xs = [x.get_component() for x in self._xsref]
         w = self._wref.get_component()
-        alpha = self._compute_alpha(xs, self._f_x_expr)
+        alpha = self._compute_alpha(self._xs, self._f_x_expr)
         _build_alphabb_constraints(
             b=self,
-            xs=xs,
+            xs=self._xs,
             w=w,
             f_x_expr=self._f_x_expr,
             alpha=alpha,
@@ -130,6 +124,15 @@ class AlphaBBRelaxationData(BaseRelaxationData):
 
     def get_abs_violation(self):
         return abs(self.get_violation())
+
+    def vars_with_bounds_in_relaxation(self):
+        return self._xs
+
+    def is_convex(self):
+        return True
+
+    def is_concave(self):
+        return False
 
     @property
     def use_linear_relaxation(self):
