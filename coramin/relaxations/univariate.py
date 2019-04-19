@@ -177,12 +177,19 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         if pw_constr_type is not None:
             # Build the piecewise side of the envelope
             if x_pts[0] > -math.inf and x_pts[-1] < math.inf:
-                b.pw_linear_under_over = pyo.Piecewise(w, x,
-                                                       pw_pts=x_pts,
-                                                       pw_repn=pw_repn,
-                                                       pw_constr_type=pw_constr_type,
-                                                       f_rule=_func_wrapper(_eval)
-                                                       )
+                can_evaluate_func_at_all_pts = True  # this is primarily for things like log(x) where x.lb = 0
+                for _pt in x_pts:
+                    try:
+                        _eval(_pt)
+                    except (ZeroDivisionError, ValueError):
+                        can_evaluate_func_at_all_pts = False
+                if can_evaluate_func_at_all_pts:
+                    b.pw_linear_under_over = pyo.Piecewise(w, x,
+                                                           pw_pts=x_pts,
+                                                           pw_repn=pw_repn,
+                                                           pw_constr_type=pw_constr_type,
+                                                           f_rule=_func_wrapper(_eval)
+                                                           )
 
         non_pw_constr_type = None
         if shape == FunctionShape.CONVEX and relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
