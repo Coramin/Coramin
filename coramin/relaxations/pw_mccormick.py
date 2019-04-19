@@ -3,7 +3,8 @@ from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from .mccormick import _build_mccormick_relaxation
 from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
 from .custom_block import declare_custom_block
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list
+import math
 
 import logging
 logger = logging.getLogger(__name__)
@@ -31,10 +32,9 @@ def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=Relaxation
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
 
     """
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-    ylb = pyo.value(y.lb)
-    yub = pyo.value(y.ub)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
+    ylb, yub = tuple(_get_bnds_list(y))
 
     check_var_pts(x, x_pts=x_pts)
     check_var_pts(y)
@@ -46,6 +46,8 @@ def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=Relaxation
     elif y.is_fixed():
         b.y_fixed_eq = pyo.Constraint(expr= w == x * pyo.value(y))
     elif len(x_pts) == 2:
+        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
+    elif xlb == -math.inf or xub == math.inf or ylb == -math.inf or yub == math.inf:
         _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
     else:
         # create the lambda variables (binaries for the pw representation)
@@ -144,7 +146,7 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
 
     def _build_relaxation(self):
         _build_pw_mccormick_relaxation(b=self, x=self._x, y=self._y, w=self._w, x_pts=self._partitions[self._x],

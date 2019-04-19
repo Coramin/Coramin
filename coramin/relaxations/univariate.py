@@ -6,7 +6,7 @@ from .custom_block import declare_custom_block
 import numpy as np
 import math
 import scipy.optimize
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list, _copy_v_pts_without_inf
 from pyomo.opt import SolverStatus, TerminationCondition
 import logging
 from pyomo.contrib.derivatives.differentiate import reverse_sd, reverse_ad
@@ -188,14 +188,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         if shape == FunctionShape.CONCAVE and relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             non_pw_constr_type = 'UB'
 
-        if x_pts[0] == -math.inf:
-            if x_pts[1] == math.inf:
-                x_pts[0] = -1
-                x_pts[1] = 1
-            else:
-                x_pts[0] = x_pts[1] - 1
-        if x_pts[-1] == math.inf:
-            x_pts[-1] = x_pts[-2] + 1
+        x_pts = _copy_v_pts_without_inf(x_pts)
 
         if non_pw_constr_type is not None:
             # Build the non-piecewise side of the envelope
@@ -310,21 +303,17 @@ def pw_cos_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
 
     check_var_pts(x, x_pts)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-
-    if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
-
-    if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed():
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
+        return
+
+    if xlb < -np.pi / 2.0:
+        return
+
+    if xub > np.pi / 2.0:
         return
 
     if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
@@ -373,21 +362,17 @@ def pw_sin_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
     check_var_pts(x, x_pts)
     expr = pyo.sin(x)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-
-    if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
-
-    if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed() or xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == (pyo.value(expr)))
+        return
+
+    if xlb < -np.pi / 2.0:
+        return
+
+    if xub > np.pi / 2.0:
         return
 
     if x_pts[0] >= 0:
@@ -524,8 +509,8 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
     expr = pyo.atan(x)
     _eval = _FxExpr(expr, x)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed() or xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == pyo.value(expr))
@@ -538,6 +523,9 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
     if x_pts[-1] <= 0:
         pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
                                  shape=FunctionShape.CONVEX, relaxation_side=relaxation_side, pw_repn=pw_repn)
+        return
+
+    if xlb == -math.inf or xub == math.inf:
         return
 
     OE_tangent_x, OE_tangent_slope, OE_tangent_intercept = _compute_arctan_overestimator_tangent_point(xlb)

@@ -6,10 +6,12 @@ from collections import Iterable
 from pyomo.core.kernel.component_map import ComponentMap
 from pyomo.core.kernel.component_set import ComponentSet
 from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
-pyo = pe
 import warnings
 import logging
+import math
+from ._utils import _get_bnds_list
 
+pyo = pe
 logger = logging.getLogger(__name__)
 
 """
@@ -195,7 +197,8 @@ class BasePWRelaxationData(BaseRelaxationData):
 
     def _add_point(self, var, value=None):
         if value is not None:
-            if (pyo.value(var.lb) < value) and (value < pyo.value(var.ub)):
+            vlb, vub = tuple(_get_bnds_list(var))
+            if (vlb < value) and (value < vub):
                 self._partitions[var].append(value)
             else:
                 e = 'The value provided to add_point was not between the variables lower \n' + \

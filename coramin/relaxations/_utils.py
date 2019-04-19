@@ -7,6 +7,18 @@ logger = logging.getLogger(__name__)
 pyo = pe
 
 
+def _copy_v_pts_without_inf(v_pts):
+    v_pts = list(v_pts)
+    if v_pts[0] == -math.inf:
+        if v_pts[1] == math.inf:
+            v_pts[0] = -1
+            v_pts[1] = 1
+        else:
+            v_pts[0] = v_pts[1] - 1
+    if v_pts[-1] == math.inf:
+        v_pts[-1] = v_pts[-2] + 1
+    return v_pts
+
 def _get_bnds_list(v):
     lb = pe.value(v.lb)
     ub = pe.value(v.ub)
@@ -38,9 +50,9 @@ def check_var_pts(x, x_pts=None):
     xlb = pe.value(x.lb)
     xub = pe.value(x.ub)
 
-    if xlb is None
+    if xlb is None:
         xlb = -math.inf
-    if xub is None,
+    if xub is None:
         xub = math.inf
 
     raise_error = False
