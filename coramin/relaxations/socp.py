@@ -208,12 +208,10 @@ class PWSOCRelaxationData(BasePWRelaxationData):
             res.append(self._z)
         return res
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        y = kwargs.pop('y')
-        w = kwargs.pop('w')
-        z = kwargs.pop('z')
+    def set_input(self, x, y, w, z, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
 
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
@@ -223,8 +221,14 @@ class PWSOCRelaxationData(BasePWRelaxationData):
         self._partitions[self._y] = _get_bnds_list(self._y)
         self._partitions[self._z] = _get_bnds_list(self._z)
 
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', True)
+        self._pw_repn = pw_repn
+        self.use_linear_relaxation = use_linear_relaxation
+
+    def build(self, x, y, w, z, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None):
+        self.set_input(x=x, y=y, w=w, z=z, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         _build_pw_soc_relaxation(b=self, x=self._x, y=self._y, z=self._z, w=self._w, x_pts=self._partitions[self._x],

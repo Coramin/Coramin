@@ -30,14 +30,16 @@ class McCormickRelaxationData(BaseRelaxationData):
     def _w(self):
         return self._wref.get_component()
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        y = kwargs.pop('y')
-        w = kwargs.pop('w')
+    def set_input(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
-        self._tol = kwargs.pop('tol', 0.0)
+        self._tol = tol
+
+    def build(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, y=y, w=w, tol=tol, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         x, y, w = self._x, self._y, self._w

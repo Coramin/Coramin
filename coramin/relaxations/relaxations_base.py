@@ -33,26 +33,16 @@ class BaseRelaxationData(_BlockData):
         else:
             raise RuntimeError('Pyomo components cannot be added to objects of type {0}.'.format(type(self)))
 
-    def set_input(self, **kwargs):
-        self._persistent_solvers = kwargs.pop('persistent_solvers', None)
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._persistent_solvers = persistent_solvers
         if self._persistent_solvers is None:
             self._persistent_solvers = ComponentSet()
         if not isinstance(self._persistent_solvers, Iterable):
             self._persistent_solvers = ComponentSet([self._persistent_solvers])
         else:
             self._persistent_solvers = ComponentSet(self._persistent_solvers)
-        self._relaxation_side = kwargs.pop('relaxation_side', RelaxationSide.BOTH)
+        self._relaxation_side = relaxation_side
         assert self._relaxation_side in RelaxationSide
-        self._set_input(kwargs)
-
-    def build(self, **kwargs):
-        self.set_input(**kwargs)
-        self.rebuild()
-        if len(kwargs) != 0:
-            msg = 'Unexpected keyword arguments in build:\n'
-            for k,v in kwargs.items():
-                msg += '\t{0}: {1}\n'.format(k, v)
-            raise ValueError(msg)
 
     @property
     def use_linear_relaxation(self):
@@ -103,14 +93,6 @@ class BaseRelaxationData(_BlockData):
         self._build_nonlinear()
         self._add_to_persistent_solvers()
         self._allow_changes = False
-
-    def _set_input(self, kwargs):
-        """
-        Subclasses should implement this method. This method is intended to initialize the data needed for
-        _build_relaxation. This method will be called by the build method. Note that any arguments expected in
-        '_set_input' of the derived class should be popped from kwargs. Otherwise, an error will be raised in 'build'.
-        """
-        raise NotImplementedError('This should be implemented in the derived class.')
 
     def _build_relaxation(self):
         """
@@ -183,10 +165,10 @@ class BasePWRelaxationData(BaseRelaxationData):
         self.clean_partitions()
         BaseRelaxationData.rebuild(self)
 
-    def build(self, **kwargs):
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
         self._partitions = ComponentMap()
         self._saved_partitions = []
-        BaseRelaxationData.build(self, **kwargs)
+        BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
 
     def add_point(self):
         """

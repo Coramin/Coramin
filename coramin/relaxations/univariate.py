@@ -674,15 +674,20 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', False)
-
+    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._wref.set_component(w)
+        self._pw_repn = pw_repn
+        self.use_linear_relaxation = use_linear_relaxation
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_x_squared_relaxation(self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -810,21 +815,22 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._function_shape = kwargs.pop('shape', FunctionShape.UNKNOWN)
-        self._f_x_expr = kwargs.pop('f_x_expr', None)
+    def set_input(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
 
-        if self._f_x_expr is None:
-            e = 'PWUnivariateRelaxation requires f_x_expr in the build method.'
-            logger.error(e)
-            raise ValueError(e)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
+        self._function_shape = shape
+        self._f_x_expr = f_x_expr
 
         self._xref.set_component(x)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_univariate_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x], f_x_expr=self._f_x_expr,
@@ -954,31 +960,22 @@ class PWCosRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
+    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True,
+                  relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
 
-        xlb = pyo.value(x.lb)
-        xub = pyo.value(x.ub)
-
-        if xlb < -np.pi / 2.0:
-            e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(
-                x) + bnds_info_str(xlb, xub)
-            logger.error(e)
-            raise ValueError(e)
-
-        if xub > np.pi / 2.0:
-            e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(
-                x) + bnds_info_str(xlb, xub)
-            logger.error(e)
-            raise ValueError(e)
-
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', True)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
+        self._use_linear_relaxation = use_linear_relaxation
 
         self._xref.set_component(x)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True,
+              relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_cos_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1106,16 +1103,16 @@ class PWSinRelaxationData(BasePWRelaxationData):
                 v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        assert pyo.value(x.lb) >= -np.pi/2.0
-        assert pyo.value(x.ub) <= np.pi/2.0
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-
+    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
         self._xref.set_component(x)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_sin_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1223,14 +1220,16 @@ class PWArctanRelaxationData(BasePWRelaxationData):
                 v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-
+    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
         self._xref.set_component(x)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=x, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_arctan_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],

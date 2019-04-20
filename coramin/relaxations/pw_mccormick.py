@@ -139,14 +139,16 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
     def vars_with_bounds_in_relaxation(self):
         return [self._x, self._y]
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        y = kwargs.pop('y')
-        w = kwargs.pop('w')
+    def set_input(self, x, y, w, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, y, w, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, y=y, w=w, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         _build_pw_mccormick_relaxation(b=self, x=self._x, y=self._y, w=self._w, x_pts=self._partitions[self._x],
