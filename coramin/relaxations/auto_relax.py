@@ -162,6 +162,7 @@ def _relax_quadratic(arg1, aux_var_map, relaxation_side, degree_map, parent_bloc
         _aux_var, relaxation = aux_var_map[id(arg1), 'quadratic']
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
         return _aux_var
     else:
         _aux_var = _get_aux_var(parent_block, arg1**2)
@@ -180,10 +181,10 @@ def _relax_convex_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, pare
         _aux_var, relaxation = aux_var_map[id(arg1), id(arg2), 'pow']
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
         return _aux_var
     else:
         _aux_var = _get_aux_var(parent_block, arg1**arg2)
-        _aux_var = parent_block.aux_vars.add()
         if swap:
             arg2 = replace_sub_expression_with_aux_var(arg2, parent_block)
             _x = arg2
@@ -205,6 +206,7 @@ def _relax_concave_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, par
         _aux_var, relaxation = aux_var_map[id(arg1), id(arg2), 'pow']
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
         return _aux_var
     else:
         _aux_var = _get_aux_var(parent_block, arg1 ** arg2)
@@ -343,6 +345,7 @@ def _relax_leaf_to_root_exp(node, values, aux_var_map, degree_map, parent_block,
         relaxation_side = relaxation_side_map[node]
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
         return _aux_var
     else:
         _aux_var = _get_aux_var(parent_block, pe.exp(arg))
@@ -370,6 +373,7 @@ def _relax_leaf_to_root_log(node, values, aux_var_map, degree_map, parent_block,
         relaxation_side = relaxation_side_map[node]
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
         return _aux_var
     else:
         _aux_var = _get_aux_var(parent_block, pe.log(arg))
