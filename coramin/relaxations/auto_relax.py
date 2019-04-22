@@ -53,10 +53,39 @@ def _get_aux_var(parent_block, expr):
 
 def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
     arg1, arg2 = values
+
+    # The purpose of the next bit of code is to find common quadratic terms. For example, suppose we are relaxing
+    # a model with the following two constraints:
+    #
+    # w1 - x*y = 0
+    # w2 + 3*x*y = 0
+    #
+    # we want to end up with
+    #
+    # w1 - aux1 = 0
+    # w2 + 3*aux1 = 0
+    # aux1 = x*y
+    #
+    # rather than
+    #
+    # w1 - aux1 = 0
+    # w2 + 3*aux2 = 0
+    # aux1 = x*y
+    # aux2 = x*y
+    #
+
+    if arg1.__class__ == numeric_expr.MonomialTermExpression:
+        coef, arg1 = arg1.args
+    elif arg2.__class__ == numeric_expr.MonomialTermExpression:
+        coef, arg2 = arg2.args
+    else:
+        coef = None
     degree_1 = degree_map[arg1]
     degree_2 = degree_map[arg2]
     if degree_1 == 0 or degree_2 == 0:
         res = arg1 * arg2
+        if coef is not None:
+            res = coef*res
         degree_map[res] = degree_1 + degree_2
         return res
     elif (id(arg1), id(arg2), 'mul') in aux_var_map or (id(arg2), id(arg1), 'mul') in aux_var_map:
@@ -67,19 +96,28 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         relaxation_side = relaxation_side_map[node]
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
-        return _aux_var
+        if coef is not None:
+            res = coef * _aux_var
+        else:
+            res = _aux_var
+        degree_map[res] = 1
+        return res
     else:
         _aux_var = _get_aux_var(parent_block, arg1 * arg2)
         arg1 = replace_sub_expression_with_aux_var(arg1, parent_block)
         arg2 = replace_sub_expression_with_aux_var(arg2, parent_block)
         relaxation_side = relaxation_side_map[node]
-        degree_map[_aux_var] = 1
         relaxation = PWMcCormickRelaxation()
         relaxation.set_input(x=arg1, y=arg2, w=_aux_var, relaxation_side=relaxation_side)
         aux_var_map[id(arg1), id(arg2), 'mul'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
-        return _aux_var
+        if coef is not None:
+            res = coef * _aux_var
+        else:
+            res = _aux_var
+        degree_map[res] = 1
+        return res
 
 
 def _relax_leaf_to_root_ReciprocalExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
