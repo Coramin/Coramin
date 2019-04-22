@@ -293,6 +293,7 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
                     res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
                                       relaxation_side_map=_new_relaxation_side_map, counter=counter)
                     degree_map[res] = 1
+                    return res
             else:
                 assert compute_bounds_on_expr(arg1)[0] >= 0
                 return _relax_convex_pow(arg1=arg1, arg2=arg2, aux_var_map=aux_var_map,
