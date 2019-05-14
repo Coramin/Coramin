@@ -536,7 +536,7 @@ def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter):
 
 def relax(model, descend_into=None):
     m = model.clone()
-    fbbt(m)
+    fbbt(m, deactivate_satisfied_constraints=True)
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)
@@ -577,7 +577,48 @@ def relax(model, descend_into=None):
         lb = c.lower
         ub = c.upper
         parent_block.aux_cons.add(pe.inequality(lb, new_body, ub))
-        parent_block.del_component(c)
+        parent_component = c.parent_component()
+        if parent_component.is_indexed():
+            del parent_component[c.index()]
+        else:
+            parent_block.del_component(c)
+
+    for c in m.component_data_objects(ctype=pe.Objective, active=True, descend_into=descend_into, sort=True):
+        degree = polynomial_degree(c.expr)
+        if degree is not None:
+            if degree <= 1:
+                continue
+
+        if c.sense == pe.minimize:
+            relaxation_side = RelaxationSide.UNDER
+        elif c.sense == pe.maximize:
+            relaxation_side = RelaxationSide.OVER
+        else:
+            raise ValueError('Encountered an objective with an unrecognized sense: ' + str(c))
+
+        parent_block = c.parent_block()
+        relaxation_side_map = ComponentMap()
+        relaxation_side_map[c.expr] = relaxation_side
+
+        if parent_block in counter_dict:
+            counter = counter_dict[parent_block]
+        else:
+            parent_block.relaxations = pe.Block()
+            parent_block.aux_vars = pe.VarList()
+            parent_block.aux_cons = pe.ConstraintList()
+            parent_block.aux_objectives = pe.ObjectiveList()
+            counter = RelaxationCounter()
+            counter_dict[parent_block] = counter
+
+        new_body = _relax_expr(expr=c.expr, aux_var_map=aux_var_map, parent_block=parent_block,
+                               relaxation_side_map=relaxation_side_map, counter=counter)
+        sense = c.sense
+        parent_block.aux_objectives.add(new_body, sense=sense)
+        parent_component = c.parent_component()
+        if parent_component.is_indexed():
+            del parent_component[c.index()]
+        else:
+            parent_block.del_component(c)
 
     for _aux_var, relaxation in aux_var_map.values():
         relaxation.use_linear_relaxation = True
