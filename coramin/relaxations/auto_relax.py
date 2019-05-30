@@ -534,8 +534,11 @@ def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter):
     return new_expr
 
 
-def relax(model, descend_into=None):
-    m = model.clone()
+def relax(model, descend_into=None, in_place=False):
+    if not in_place:
+        m = model.clone()
+    else:
+        m = model
     fbbt(m, deactivate_satisfied_constraints=True)
 
     if descend_into is None:
