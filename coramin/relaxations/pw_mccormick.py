@@ -205,3 +205,6 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         if val is not True:
             raise ValueError('PWMcCormickRelaxation only supports linear relaxations.')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}*{3}'.format(self._w.name, relational_operator_string, self._x.name, self._y.name)

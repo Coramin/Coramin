@@ -77,6 +77,9 @@ class McCormickRelaxationData(BaseRelaxationData):
         if val is not True:
             raise ValueError('McCormickRelaxation only supports relaxations.')
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}*{3}'.format(self._w.name, relational_operator_string, self._x.name, self._y.name)
+
 
 def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH, tol=0):
     """

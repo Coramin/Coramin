@@ -1,4 +1,4 @@
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import _BlockData, Block
 from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
@@ -10,6 +10,7 @@ import warnings
 import logging
 import math
 from ._utils import _get_bnds_list
+import sys
 
 pyo = pe
 logger = logging.getLogger(__name__)
@@ -145,6 +146,29 @@ class BaseRelaxationData(_BlockData):
         if val not in RelaxationSide:
             raise ValueError('{0} is not a valid member of RelaxationSide'.format(val))
         self._relaxation_side = val
+
+    def _get_pprint_string(self, relational_operator_string):
+        raise NotImplementedError('This method should be implemented by subclasses.')
+
+    def pprint(self, filename=None, ostream=None, verbose=False, prefix=""):
+        if filename is not None:
+            output = open(filename, 'w')
+            self.pprint(ostream=output, verbose=verbose, prefix=prefix)
+            output.close()
+            return
+
+        if ostream is None:
+            ostream = sys.stdout
+
+        if self.relaxation_side == RelaxationSide.BOTH:
+            relational_operator = '=='
+        elif self.relaxation_side == RelaxationSide.UNDER:
+            relational_operator = '>='
+        elif self.relaxation_side == RelaxationSide.OVER:
+            relational_operator = '<='
+        else:
+            raise ValueError('Unexpected relaxation side')
+        ostream.write('{0}{1}\n'.format(prefix, self._get_pprint_string(relational_operator)))
 
 
 @declare_custom_block(name='BasePWRelaxation')

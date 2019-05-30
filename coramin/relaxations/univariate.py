@@ -765,6 +765,9 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}**2'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWUnivariateRelaxation')
 class PWUnivariateRelaxationData(BasePWRelaxationData):
@@ -916,6 +919,9 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         if val is not True:
             raise ValueError('PWUnivariateRelaxation only supports linear relaxations.')
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}'.format(self._w.name, relational_operator_string, str(self._f_x_expr))
+
 
 @declare_custom_block(name='PWCosRelaxation')
 class PWCosRelaxationData(BasePWRelaxationData):
@@ -1053,6 +1059,9 @@ class PWCosRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} cos({2})'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWSinRelaxation')
 class PWSinRelaxationData(BasePWRelaxationData):
@@ -1170,6 +1179,9 @@ class PWSinRelaxationData(BasePWRelaxationData):
         if val is not True:
             raise ValueError('PWSinRelaxation only supports linear relaxations.')
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} sin({2})'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWArctanRelaxation')
 class PWArctanRelaxationData(BasePWRelaxationData):
@@ -1286,3 +1298,6 @@ class PWArctanRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         if val is not True:
             raise ValueError('PWArctanRelaxation only supports linear relaxations.')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} arctan({2})'.format(self._w.name, relational_operator_string, self._x.name)

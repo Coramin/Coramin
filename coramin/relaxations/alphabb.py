@@ -153,3 +153,6 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     def relaxation_side(self, val):
         if val != RelaxationSide.UNDER:
             raise ValueError('relaxation_side must be RelaxationSide.UNDER')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}'.format(self._w.name, relational_operator_string, str(self._f_x_expr))

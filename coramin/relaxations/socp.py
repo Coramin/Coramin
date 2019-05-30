@@ -305,3 +305,6 @@ class PWSOCRelaxationData(BasePWRelaxationData):
     @use_linear_relaxation.setter
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0}*{1} {2} {3}**2 + {4}**2'.format(self._w.name, self._z.name, relational_operator_string, self._x.name, self._y.name)
