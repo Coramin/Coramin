@@ -98,9 +98,11 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
             relaxation.relaxation_side = RelaxationSide.BOTH
         if coef is not None:
             res = coef * _aux_var
+            degree_map[_aux_var] = 1
+            degree_map[res] = 1
         else:
             res = _aux_var
-        degree_map[res] = 1
+            degree_map[res] = 1
         return res
     else:
         _aux_var = _get_aux_var(parent_block, arg1 * arg2)
@@ -114,9 +116,11 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         counter.increment()
         if coef is not None:
             res = coef * _aux_var
+            degree_map[_aux_var] = 1
+            degree_map[res] = 1
         else:
             res = _aux_var
-        degree_map[res] = 1
+            degree_map[res] = 1
         return res
 
 
