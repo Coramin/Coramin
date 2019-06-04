@@ -614,9 +614,11 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
             parent_block.relaxations = pe.Block()
             parent_block.aux_vars = pe.VarList()
             parent_block.aux_cons = pe.ConstraintList()
-            parent_block.aux_objectives = pe.ObjectiveList()
             counter = RelaxationCounter()
             counter_dict[parent_block] = counter
+
+        if not hasattr(parent_block, 'aux_objectives'):
+            parent_block.aux_objectives = pe.ObjectiveList()
 
         new_body = _relax_expr(expr=c.expr, aux_var_map=aux_var_map, parent_block=parent_block,
                                relaxation_side_map=relaxation_side_map, counter=counter)
