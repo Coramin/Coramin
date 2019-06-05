@@ -168,7 +168,7 @@ class BaseRelaxationData(_BlockData):
             relational_operator = '<='
         else:
             raise ValueError('Unexpected relaxation side')
-        ostream.write('{0}{1}\n'.format(prefix, self._get_pprint_string(relational_operator)))
+        ostream.write('{0}{1}: {2}\n'.format(prefix, self.name, self._get_pprint_string(relational_operator)))
 
 
 @declare_custom_block(name='BasePWRelaxation')
