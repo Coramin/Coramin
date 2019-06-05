@@ -178,14 +178,22 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
             # Build the piecewise side of the envelope
             if x_pts[0] > -math.inf and x_pts[-1] < math.inf:
                 can_evaluate_func_at_all_pts = True  # this is primarily for things like log(x) where x.lb = 0
+                tmp_pts = list()
                 for _pt in x_pts:
                     try:
-                        _eval(_pt)
+                        f = _eval(_pt)
+                        if f < -1e8:
+                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_pt), str(x), str(f_x_expr)))
+                            continue
+                        if f > 1e8:
+                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_pt), str(x), str(f_x_expr)))
+                            continue
+                        tmp_pts.append(_pt)
                     except (ZeroDivisionError, ValueError):
-                        can_evaluate_func_at_all_pts = False
-                if can_evaluate_func_at_all_pts:
+                        pass
+                if len(tmp_pts) >= 2 and tmp_pts[0] == x_pts[0] and tmp_pts[-1] == x_pts[-1]:
                     b.pw_linear_under_over = pyo.Piecewise(w, x,
-                                                           pw_pts=x_pts,
+                                                           pw_pts=tmp_pts,
                                                            pw_repn=pw_repn,
                                                            pw_constr_type=pw_constr_type,
                                                            f_rule=_func_wrapper(_eval)
@@ -206,6 +214,18 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                 try:
                     w_at_pt = _eval(_x)
                     m_at_pt = _eval.deriv(_x)
+                    if w_at_pt < -1e8:
+                        logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
+                        continue
+                    if w_at_pt > 1e8:
+                        logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
+                        continue
+                    if m_at_pt < -1e8:
+                        logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
+                        continue
+                    if m_at_pt > 1e8:
+                        logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
+                        continue
                     b_at_pt = w_at_pt - m_at_pt * _x
                     if non_pw_constr_type == 'LB':
                         b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
