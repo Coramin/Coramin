@@ -123,7 +123,7 @@ def _func_wrapper(obj):
 
 
 def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=FunctionShape.UNKNOWN,
-                             relaxation_side=RelaxationSide.BOTH):
+                             relaxation_side=RelaxationSide.BOTH, large_eval_tol=1e8):
     """
     This function creates piecewise envelopes to relax "w=f(x)" where f(x) is univariate and either convex over the
     entire domain of x or concave over the entire domain of x.
@@ -148,6 +148,9 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         Specify the shape of the function. Valid values are minlp.FunctionShape.CONVEX or minlp.FunctionShape.CONCAVE
     relaxation_side: RelaxationSide
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+    large_eval_tol: float
+        To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol, 
+        at a point in x_pts, then that point is skipped.
     """
     _eval = _FxExpr(expr=f_x_expr, x=x)
     xlb = x_pts[0]
@@ -182,10 +185,10 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                 for _pt in x_pts:
                     try:
                         f = _eval(_pt)
-                        if f < -1e8:
+                        if f < -large_eval_tol:
                             logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_pt), str(x), str(f_x_expr)))
                             continue
-                        if f > 1e8:
+                        if f > large_eval_tol:
                             logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_pt), str(x), str(f_x_expr)))
                             continue
                         tmp_pts.append(_pt)
@@ -214,16 +217,16 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                 try:
                     w_at_pt = _eval(_x)
                     m_at_pt = _eval.deriv(_x)
-                    if w_at_pt < -1e8:
+                    if w_at_pt < -large_eval_tol:
                         logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
                         continue
-                    if w_at_pt > 1e8:
+                    if w_at_pt > large_eval_tol:
                         logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
                         continue
-                    if m_at_pt < -1e8:
+                    if m_at_pt < -large_eval_tol:
                         logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
                         continue
-                    if m_at_pt > 1e8:
+                    if m_at_pt > large_eval_tol:
                         logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
                         continue
                     b_at_pt = w_at_pt - m_at_pt * _x
@@ -810,6 +813,9 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         Options are FunctionShape.CONVEX and FunctionShape.CONCAVE
     f_x_expr: pyomo expression
         The pyomo expression representing f(x)
+    large_eval_tol: float
+        To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol, 
+        at a point in x_pts, then that point is skipped.
     """
 
     def __init__(self, component):
@@ -819,6 +825,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         self._pw_repn = 'INC'
         self._function_shape = FunctionShape.UNKNOWN
         self._f_x_expr = None
+        self.large_eval_tol = None
 
     @property
     def _x(self):
@@ -839,26 +846,27 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         return v
 
     def set_input(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None):
-
+                  persistent_solvers=None, large_eval_tol=1e8):
         self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._pw_repn = pw_repn
         self._function_shape = shape
         self._f_x_expr = f_x_expr
+        self.large_eval_tol = large_eval_tol
 
         self._xref.set_component(x)
         self._wref.set_component(w)
         self._partitions[self._x] = _get_bnds_list(self._x)
 
-    def build(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+    def build(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None, large_eval_tol=1e8):
         self.set_input(x=x, w=w, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn, relaxation_side=relaxation_side,
-                       persistent_solvers=persistent_solvers)
+                       persistent_solvers=persistent_solvers, large_eval_tol=large_eval_tol)
         self.rebuild()
 
     def _build_relaxation(self):
         pw_univariate_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x], f_x_expr=self._f_x_expr,
                                  pw_repn=self._pw_repn, shape=self._function_shape,
-                                 relaxation_side=self._relaxation_side)
+                                 relaxation_side=self._relaxation_side, large_eval_tol=self.large_eval_tol)
 
     def _get_cut_expr(self):
         """
