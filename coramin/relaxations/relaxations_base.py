@@ -88,22 +88,9 @@ class BaseRelaxationData(_BlockData):
         self._add_to_persistent_solvers()
         self._allow_changes = False
 
-    def rebuild_nonlinear(self):
-        self._allow_changes = True
-        self.remove_relaxation()
-        self._build_nonlinear()
-        self._add_to_persistent_solvers()
-        self._allow_changes = False
-
     def _build_relaxation(self):
         """
         Build the auto-created vars/constraints that form the relaxation
-        """
-        raise NotImplementedError('This should be implemented in the derived class.')
-
-    def _build_nonlinear(self):
-        """
-        Build the nonlinear constraint.
         """
         raise NotImplementedError('This should be implemented in the derived class.')
 
