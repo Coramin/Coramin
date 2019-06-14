@@ -6,7 +6,7 @@ from .custom_block import declare_custom_block
 import numpy as np
 import math
 import scipy.optimize
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list, _copy_v_pts_without_inf
 from pyomo.opt import SolverStatus, TerminationCondition
 import logging
 from pyomo.contrib.derivatives.differentiate import reverse_sd, reverse_ad
@@ -150,6 +150,8 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
     """
     _eval = _FxExpr(expr=f_x_expr, x=x)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     check_var_pts(x, x_pts)
 
@@ -160,7 +162,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
 
     if x.is_fixed():
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
-    elif pyo.value(x.ub) == pyo.value(x.lb):
+    elif xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.lb))
     else:
         # Do the non-convex piecewise portion if shape=CONCAVE and relaxation_side=Under/BOTH
@@ -174,30 +176,44 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
 
         if pw_constr_type is not None:
             # Build the piecewise side of the envelope
-            b.pw_linear_under_over = pyo.Piecewise(w, x,
-                                                   pw_pts=x_pts,
-                                                   pw_repn=pw_repn,
-                                                   pw_constr_type=pw_constr_type,
-                                                   f_rule=_func_wrapper(_eval)
-                                                   )
+            if x_pts[0] > -math.inf and x_pts[-1] < math.inf:
+                can_evaluate_func_at_all_pts = True  # this is primarily for things like log(x) where x.lb = 0
+                for _pt in x_pts:
+                    try:
+                        _eval(_pt)
+                    except (ZeroDivisionError, ValueError):
+                        can_evaluate_func_at_all_pts = False
+                if can_evaluate_func_at_all_pts:
+                    b.pw_linear_under_over = pyo.Piecewise(w, x,
+                                                           pw_pts=x_pts,
+                                                           pw_repn=pw_repn,
+                                                           pw_constr_type=pw_constr_type,
+                                                           f_rule=_func_wrapper(_eval)
+                                                           )
+
         non_pw_constr_type = None
         if shape == FunctionShape.CONVEX and relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
             non_pw_constr_type = 'LB'
         if shape == FunctionShape.CONCAVE and relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             non_pw_constr_type = 'UB'
 
+        x_pts = _copy_v_pts_without_inf(x_pts)
+
         if non_pw_constr_type is not None:
             # Build the non-piecewise side of the envelope
             b.linear_under_over = pyo.ConstraintList()
             for _x in x_pts:
-                w_at_pt = _eval(_x)
-                m_at_pt = _eval.deriv(_x)
-                b_at_pt = w_at_pt - m_at_pt * _x
-                if non_pw_constr_type == 'LB':
-                    b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
-                else:
-                    assert non_pw_constr_type == 'UB'
-                    b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
+                try:
+                    w_at_pt = _eval(_x)
+                    m_at_pt = _eval.deriv(_x)
+                    b_at_pt = w_at_pt - m_at_pt * _x
+                    if non_pw_constr_type == 'LB':
+                        b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
+                    else:
+                        assert non_pw_constr_type == 'UB'
+                        b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
+                except (ZeroDivisionError, ValueError):
+                    pass
 
 
 def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
@@ -237,9 +253,6 @@ def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=Relax
     # exception for OVER/True
     # change UNDER/True to None/True
     # change BOTH/True  to OVER/True
-
-    xub = pyo.value(x.ub)
-    xlb = pyo.value(x.lb)
 
     check_var_pts(x, x_pts)
 
@@ -299,21 +312,17 @@ def pw_cos_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
 
     check_var_pts(x, x_pts)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-
-    if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
-
-    if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed():
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
+        return
+
+    if xlb < -np.pi / 2.0:
+        return
+
+    if xub > np.pi / 2.0:
         return
 
     if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
@@ -362,21 +371,17 @@ def pw_sin_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
     check_var_pts(x, x_pts)
     expr = pyo.sin(x)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-
-    if xlb < -np.pi / 2.0:
-        e = 'Lower Bound on x must be greater than or equal to -pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
-
-    if xub > np.pi / 2.0:
-        e = 'Upper Bound on x must be less than or equal to pi/2:' + var_info_str(x) + bnds_info_str(xlb, xub)
-        logger.error(e)
-        raise ValueError(e)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed() or xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == (pyo.value(expr)))
+        return
+
+    if xlb < -np.pi / 2.0:
+        return
+
+    if xub > np.pi / 2.0:
         return
 
     if x_pts[0] >= 0:
@@ -513,8 +518,8 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
     expr = pyo.atan(x)
     _eval = _FxExpr(expr, x)
 
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
 
     if x.is_fixed() or xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == pyo.value(expr))
@@ -527,6 +532,9 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
     if x_pts[-1] <= 0:
         pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
                                  shape=FunctionShape.CONVEX, relaxation_side=relaxation_side, pw_repn=pw_repn)
+        return
+
+    if xlb == -math.inf or xub == math.inf:
         return
 
     OE_tangent_x, OE_tangent_slope, OE_tangent_intercept = _compute_arctan_overestimator_tangent_point(xlb)
@@ -666,15 +674,20 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', False)
-
+    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._pw_repn = pw_repn
+        self.use_linear_relaxation = use_linear_relaxation
+        self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_x_squared_relaxation(self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -752,6 +765,9 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}**2'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWUnivariateRelaxation')
 class PWUnivariateRelaxationData(BasePWRelaxationData):
@@ -802,21 +818,22 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._function_shape = kwargs.pop('shape', FunctionShape.UNKNOWN)
-        self._f_x_expr = kwargs.pop('f_x_expr', None)
+    def set_input(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
 
-        if self._f_x_expr is None:
-            e = 'PWUnivariateRelaxation requires f_x_expr in the build method.'
-            logger.error(e)
-            raise ValueError(e)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
+        self._function_shape = shape
+        self._f_x_expr = f_x_expr
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_univariate_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x], f_x_expr=self._f_x_expr,
@@ -902,6 +919,9 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         if val is not True:
             raise ValueError('PWUnivariateRelaxation only supports linear relaxations.')
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}'.format(self._w.name, relational_operator_string, str(self._f_x_expr))
+
 
 @declare_custom_block(name='PWCosRelaxation')
 class PWCosRelaxationData(BasePWRelaxationData):
@@ -946,31 +966,22 @@ class PWCosRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
+    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True,
+                  relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
 
-        xlb = pyo.value(x.lb)
-        xub = pyo.value(x.ub)
-
-        if xlb < -np.pi / 2.0:
-            e = 'Lower Bound on x must be greater than or equal to -pi/2:\n' + var_info_str(
-                x) + bnds_info_str(xlb, xub)
-            logger.error(e)
-            raise ValueError(e)
-
-        if xub > np.pi / 2.0:
-            e = 'Upper Bound on x must be less than or equal to pi/2:\n' + var_info_str(
-                x) + bnds_info_str(xlb, xub)
-            logger.error(e)
-            raise ValueError(e)
-
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', True)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
+        self._use_linear_relaxation = use_linear_relaxation
 
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True,
+              relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_cos_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1048,6 +1059,9 @@ class PWCosRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} cos({2})'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWSinRelaxation')
 class PWSinRelaxationData(BasePWRelaxationData):
@@ -1098,16 +1112,16 @@ class PWSinRelaxationData(BasePWRelaxationData):
                 v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        assert pyo.value(x.lb) >= -np.pi/2.0
-        assert pyo.value(x.ub) <= np.pi/2.0
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-
+    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=w, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_sin_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1165,6 +1179,9 @@ class PWSinRelaxationData(BasePWRelaxationData):
         if val is not True:
             raise ValueError('PWSinRelaxation only supports linear relaxations.')
 
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} sin({2})'.format(self._w.name, relational_operator_string, self._x.name)
+
 
 @declare_custom_block(name='PWArctanRelaxation')
 class PWArctanRelaxationData(BasePWRelaxationData):
@@ -1215,14 +1232,16 @@ class PWArctanRelaxationData(BasePWRelaxationData):
                 v.append(self._x)
         return v
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        w = kwargs.pop('w')
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-
+    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._pw_repn = pw_repn
         self._xref.set_component(x)
         self._wref.set_component(w)
-        self._partitions[self._x] = [pyo.value(self._x.lb), pyo.value(self._x.ub)]
+        self._partitions[self._x] = _get_bnds_list(self._x)
+
+    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, w=x, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         pw_arctan_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
@@ -1279,3 +1298,6 @@ class PWArctanRelaxationData(BasePWRelaxationData):
     def use_linear_relaxation(self, val):
         if val is not True:
             raise ValueError('PWArctanRelaxation only supports linear relaxations.')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} arctan({2})'.format(self._w.name, relational_operator_string, self._x.name)

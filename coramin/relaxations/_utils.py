@@ -1,9 +1,33 @@
 import pyomo.environ as pe
 import logging
 import warnings
+import math
 
 logger = logging.getLogger(__name__)
 pyo = pe
+
+
+def _copy_v_pts_without_inf(v_pts):
+    v_pts = list(v_pts)
+    if v_pts[0] == -math.inf:
+        if v_pts[1] == math.inf:
+            v_pts[0] = -1
+            v_pts[1] = 1
+        else:
+            v_pts[0] = v_pts[1] - 1
+    if v_pts[-1] == math.inf:
+        v_pts[-1] = v_pts[-2] + 1
+    return v_pts
+
+def _get_bnds_list(v):
+    lb = pe.value(v.lb)
+    ub = pe.value(v.ub)
+    if lb is None:
+        lb = -math.inf
+    if ub is None:
+        ub = math.inf
+
+    return [lb, ub]
 
 
 def var_info_str(v):
@@ -26,6 +50,11 @@ def check_var_pts(x, x_pts=None):
     xlb = pe.value(x.lb)
     xub = pe.value(x.ub)
 
+    if xlb is None:
+        xlb = -math.inf
+    if xub is None:
+        xub = math.inf
+
     raise_error = False
     raise_warning = False
     msg = None
@@ -44,11 +73,6 @@ def check_var_pts(x, x_pts=None):
             msg = ('end points of the x_pts list must be equal to the bounds on the x variable:\n' + var_info_str(x) +
                    bnds_info_str(xlb, xub) + x_pts_info_str(x_pts))
             raise_error = True
-
-    if abs(pyo.value(x.ub) - pyo.value(x.lb)) <= 1e-8:
-        msg = ('The difference between the variables lower and upper bounds is small:\n' + var_info_str(x) +
-               bnds_info_str(xlb, xub))
-        raise_warning = True
 
     if raise_error:
         logger.error(msg)

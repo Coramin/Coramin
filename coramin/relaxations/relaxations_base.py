@@ -1,4 +1,4 @@
-from pyomo.core.base.block import _BlockData
+from pyomo.core.base.block import _BlockData, Block
 from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
@@ -6,10 +6,13 @@ from collections import Iterable
 from pyomo.core.kernel.component_map import ComponentMap
 from pyomo.core.kernel.component_set import ComponentSet
 from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
-pyo = pe
 import warnings
 import logging
+import math
+from ._utils import _get_bnds_list
+import sys
 
+pyo = pe
 logger = logging.getLogger(__name__)
 
 """
@@ -31,23 +34,16 @@ class BaseRelaxationData(_BlockData):
         else:
             raise RuntimeError('Pyomo components cannot be added to objects of type {0}.'.format(type(self)))
 
-    def build(self, **kwargs):
-        self._persistent_solvers = kwargs.pop('persistent_solvers', None)
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._persistent_solvers = persistent_solvers
         if self._persistent_solvers is None:
             self._persistent_solvers = ComponentSet()
         if not isinstance(self._persistent_solvers, Iterable):
             self._persistent_solvers = ComponentSet([self._persistent_solvers])
         else:
             self._persistent_solvers = ComponentSet(self._persistent_solvers)
-        self._relaxation_side = kwargs.pop('relaxation_side', RelaxationSide.BOTH)
+        self._relaxation_side = relaxation_side
         assert self._relaxation_side in RelaxationSide
-        self._set_input(kwargs)
-        self.rebuild()
-        if len(kwargs) != 0:
-            msg = 'Unexpected keyword arguments in build:\n'
-            for k,v in kwargs.items():
-                msg += '\t{0}: {1}\n'.format(k, v)
-            raise ValueError(msg)
 
     @property
     def use_linear_relaxation(self):
@@ -91,14 +87,6 @@ class BaseRelaxationData(_BlockData):
         self._build_relaxation()
         self._add_to_persistent_solvers()
         self._allow_changes = False
-
-    def _set_input(self, kwargs):
-        """
-        Subclasses should implement this method. This method is intended to initialize the data needed for
-        _build_relaxation. This method will be called by the build method. Note that any arguments expected in
-        '_set_input' of the derived class should be popped from kwargs. Otherwise, an error will be raised in 'build'.
-        """
-        raise NotImplementedError('This should be implemented in the derived class.')
 
     def _build_relaxation(self):
         """
@@ -146,6 +134,29 @@ class BaseRelaxationData(_BlockData):
             raise ValueError('{0} is not a valid member of RelaxationSide'.format(val))
         self._relaxation_side = val
 
+    def _get_pprint_string(self, relational_operator_string):
+        raise NotImplementedError('This method should be implemented by subclasses.')
+
+    def pprint(self, filename=None, ostream=None, verbose=False, prefix=""):
+        if filename is not None:
+            output = open(filename, 'w')
+            self.pprint(ostream=output, verbose=verbose, prefix=prefix)
+            output.close()
+            return
+
+        if ostream is None:
+            ostream = sys.stdout
+
+        if self.relaxation_side == RelaxationSide.BOTH:
+            relational_operator = '=='
+        elif self.relaxation_side == RelaxationSide.UNDER:
+            relational_operator = '>='
+        elif self.relaxation_side == RelaxationSide.OVER:
+            relational_operator = '<='
+        else:
+            raise ValueError('Unexpected relaxation side')
+        ostream.write('{0}{1}: {2}\n'.format(prefix, self.name, self._get_pprint_string(relational_operator)))
+
 
 @declare_custom_block(name='BasePWRelaxation')
 class BasePWRelaxationData(BaseRelaxationData):
@@ -165,10 +176,10 @@ class BasePWRelaxationData(BaseRelaxationData):
         self.clean_partitions()
         BaseRelaxationData.rebuild(self)
 
-    def build(self, **kwargs):
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
         self._partitions = ComponentMap()
         self._saved_partitions = []
-        BaseRelaxationData.build(self, **kwargs)
+        BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
 
     def add_point(self):
         """
@@ -179,7 +190,8 @@ class BasePWRelaxationData(BaseRelaxationData):
 
     def _add_point(self, var, value=None):
         if value is not None:
-            if (pyo.value(var.lb) < value) and (value < pyo.value(var.ub)):
+            vlb, vub = tuple(_get_bnds_list(var))
+            if (vlb < value) and (value < vub):
                 self._partitions[var].append(value)
             else:
                 e = 'The value provided to add_point was not between the variables lower \n' + \
@@ -217,8 +229,7 @@ class BasePWRelaxationData(BaseRelaxationData):
             pts.sort()
 
         for var, pts in self._partitions.items():
-            lb = pe.value(var.lb)
-            ub = pe.value(var.ub)
+            lb, ub = tuple(_get_bnds_list(var))
 
             if pts[0] < lb or pts[-1] > ub:
                 pts = [v for v in pts if (lb < v < ub)]

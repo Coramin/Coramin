@@ -92,11 +92,9 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         pts = [pyo.value(x) for x in self._xs]
         self._points.append(pts)
 
-    def _set_input(self, kwargs):
-        xs = kwargs.pop('xs')
-        w = kwargs.pop('w')
-        f_x_expr = kwargs.pop('f_x_expr')
-        self._compute_alpha = kwargs.pop('compute_alpha', _compute_alpha)
+    def set_input(self, xs, w, f_x_expr, compute_alpha=_compute_alpha, persistent_solvers=None):
+        self._set_input(relaxation_side=RelaxationSide.UNDER, persistent_solvers=persistent_solvers)
+        self._compute_alpha = compute_alpha
 
         if not isinstance(xs, list):
             xs = [xs]
@@ -104,6 +102,11 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         self._xs = xs
         self._wref.set_component(w)
         self._f_x_expr = f_x_expr
+
+    def build(self, xs, w, f_x_expr, compute_alpha=_compute_alpha, persistent_solvers=None):
+        self.set_input(xs=xs, w=w, f_x_expr=f_x_expr, compute_alpha=compute_alpha,
+                       persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         w = self._wref.get_component()
@@ -150,3 +153,6 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     def relaxation_side(self, val):
         if val != RelaxationSide.UNDER:
             raise ValueError('relaxation_side must be RelaxationSide.UNDER')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}'.format(self._w.name, relational_operator_string, str(self._f_x_expr))

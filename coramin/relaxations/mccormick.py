@@ -3,6 +3,8 @@ import pyomo.environ as pyo
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from .custom_block import declare_custom_block
 from .relaxations_base import BaseRelaxationData, ComponentWeakRef
+import math
+from ._utils import _get_bnds_list
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +30,16 @@ class McCormickRelaxationData(BaseRelaxationData):
     def _w(self):
         return self._wref.get_component()
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        y = kwargs.pop('y')
-        w = kwargs.pop('w')
+    def set_input(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
-        self._tol = kwargs.pop('tol', 0.0)
+        self._tol = tol
+
+    def build(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        self.set_input(x=x, y=y, w=w, tol=tol, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         x, y, w = self._x, self._y, self._w
@@ -72,6 +76,9 @@ class McCormickRelaxationData(BaseRelaxationData):
     def use_linear_relaxation(self, val):
         if val is not True:
             raise ValueError('McCormickRelaxation only supports relaxations.')
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0} {1} {2}*{3}'.format(self._w.name, relational_operator_string, self._x.name, self._y.name)
 
 
 def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH, tol=0):
@@ -110,10 +117,8 @@ def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH,
     N/A
     """
     # extract the bounds on x and y
-    xlb = pyo.value(x.lb)
-    ylb = pyo.value(y.lb)
-    xub = pyo.value(x.ub)
-    yub = pyo.value(y.ub)
+    xlb, xub = tuple(_get_bnds_list(x))
+    ylb, yub = tuple(_get_bnds_list(y))
 
     # perform error checking on the bounds before constructing the McCormick envelope
     if xub < xlb:
@@ -139,13 +144,17 @@ def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH,
         b.relaxation = pyo.ConstraintList()
         assert (relaxation_side in RelaxationSide)
         if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
-            b.relaxation.add(w >= xlb*y + x*ylb - xlb*ylb)
-            if (xub - xlb) * (yub - ylb) > tol:
+            if xlb != -math.inf and ylb != -math.inf:
+                b.relaxation.add(w >= xlb*y + x*ylb - xlb*ylb)
+            if (xub - xlb) * (yub - ylb) > tol or xlb == -math.inf or ylb == -math.inf:
                 # see the doc string for this method - only adding one over and one under-estimator
-                b.relaxation.add(w >= xub*y + x*yub - xub*yub)
+                if xub != math.inf and yub != math.inf:
+                    b.relaxation.add(w >= xub*y + x*yub - xub*yub)
 
         if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
-            b.relaxation.add(w <= xub*y + x*ylb - xub*ylb)
-            if (xub - xlb) * (yub - ylb) > tol:
+            if xub != math.inf and ylb != -math.inf:
+                b.relaxation.add(w <= xub*y + x*ylb - xub*ylb)
+            if (xub - xlb) * (yub - ylb) > tol or xub == math.inf or ylb == -math.inf:
                 # see the doc string for this method - only adding one over and one under-estimator
-                b.relaxation.add(w <= x*yub + xlb*y - xlb*yub)
+                if xlb != -math.inf and yub != math.inf:
+                    b.relaxation.add(w <= x*yub + xlb*y - xlb*yub)

@@ -8,3 +8,5 @@ from .univariate import PWArctanRelaxation, PWArctanRelaxationData
 from .univariate import PWSinRelaxation, PWSinRelaxationData
 from .univariate import PWCosRelaxation, PWCosRelaxationData
 from .socp import PWSOCRelaxation, PWSOCRelaxationData
+from .auto_relax import relax
+from .alphabb import AlphaBBRelaxationData, AlphaBBRelaxation

@@ -20,6 +20,10 @@ try:
     mpi_available = True
 except ImportError:
     mpi_available = False
+try:
+    from tqdm import tqdm
+except ImportError:
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +94,70 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
                 solver.update_var(v)
 
 
-def _tighten_bnds(model, solver, vardatalist, lb_or_ub):
+def _single_solve(v, model, solver, vardatalist, lb_or_ub):
+    # solve for lower var bound
+    if lb_or_ub == 'lb':
+        model.__obj_bounds_tightening = pyo.Objective(expr=v, sense=pyo.minimize)
+    else:
+        assert lb_or_ub == 'ub'
+        model.__obj_bounds_tightening = pyo.Objective(expr=-v, sense=pyo.minimize)
+    if isinstance(solver, PersistentSolver):
+        solver.set_objective(model.__obj_bounds_tightening)
+        results = solver.solve(tee=False, load_solutions=False, save_results=False)
+        if ((results.solver.status in _acceptable_solver_status) and
+                (results.solver.termination_condition in _acceptable_termination_conditions)):
+            if type(solver) in _mip_solver_types:
+                if lb_or_ub == 'lb':
+                    new_bnd = results.problem.lower_bound
+                else:
+                    new_bnd = -results.problem.lower_bound
+            else:
+                solver.load_vars([v])
+                new_bnd = pyo.value(v.value)
+        else:
+            if lb_or_ub == 'lb':
+                new_bnd = pyo.value(v.lb)
+            else:
+                new_bnd = pyo.value(v.ub)
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
+                v)
+            warnings.warn(msg)
+            logger.warning(msg)
+    else:
+        results = solver.solve(model, tee=False, load_solutions=False)
+        if ((results.solver.status in _acceptable_solver_status) and
+                (results.solver.termination_condition in _acceptable_termination_conditions)):
+            if type(solver) in _mip_solver_types:
+                if lb_or_ub == 'lb':
+                    new_bnd = results.problem.lower_bound
+                else:
+                    new_bnd = -results.problem.lower_bound
+            else:
+                model.solutions.load_from(results)
+                new_bnd = pyo.value(v.value)
+        else:
+            if lb_or_ub == 'lb':
+                new_bnd = pyo.value(v.lb)
+            else:
+                new_bnd = pyo.value(v.ub)
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
+                v)
+            warnings.warn(msg)
+            logger.warning(msg)
+    if lb_or_ub == 'lb':
+        if new_bnd < pyo.value(v.lb) or new_bnd is None:
+            new_bnd = pyo.value(v.lb)
+    else:
+        if new_bnd > pyo.value(v.ub) or new_bnd is None:
+            new_bnd = pyo.value(v.ub)
+
+    # remove the objective function
+    del model.__obj_bounds_tightening
+
+    return new_bnd
+
+
+def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False):
     """
     Tighten the lower bounds of all variables in vardatalist (or self.vars_to_tighten if vardatalist is None).
 
@@ -108,66 +175,19 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub):
     """
     # solve for the new bounds
     new_bounds = list()
-    for v in vardatalist:
-        # solve for lower var bound
-        if lb_or_ub == 'lb':
-            model.__obj_bounds_tightening = pyo.Objective(expr=v, sense=pyo.minimize)
-        else:
-            assert lb_or_ub == 'ub'
-            model.__obj_bounds_tightening = pyo.Objective(expr=-v, sense=pyo.minimize)
-        if isinstance(solver, PersistentSolver):
-            solver.set_objective(model.__obj_bounds_tightening)
-            results = solver.solve(tee=False, load_solutions=False, save_results=False)
-            if ((results.solver.status in _acceptable_solver_status) and
-                    (results.solver.termination_condition in _acceptable_termination_conditions)):
-                if type(solver) in _mip_solver_types:
-                    if lb_or_ub == 'lb':
-                        new_bnd = results.problem.lower_bound
-                    else:
-                        new_bnd = -results.problem.lower_bound
-                else:
-                    solver.load_vars([v])
-                    new_bnd = pyo.value(v.value)
-            else:
-                if lb_or_ub == 'lb':
-                    new_bnd = pyo.value(v.lb)
-                else:
-                    new_bnd = pyo.value(v.ub)
-                msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                    v)
-                warnings.warn(msg)
-                logger.warning(msg)
-        else:
-            results = solver.solve(model, tee=False, load_solutions=False)
-            if ((results.solver.status in _acceptable_solver_status) and
-                    (results.solver.termination_condition in _acceptable_termination_conditions)):
-                if type(solver) in _mip_solver_types:
-                    if lb_or_ub == 'lb':
-                        new_bnd = results.problem.lower_bound
-                    else:
-                        new_bnd = -results.problem.lower_bound
-                else:
-                    model.solutions.load_from(results)
-                    new_bnd = pyo.value(v.value)
-            else:
-                if lb_or_ub == 'lb':
-                    new_bnd = pyo.value(v.lb)
-                else:
-                    new_bnd = pyo.value(v.ub)
-                msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                    v)
-                warnings.warn(msg)
-                logger.warning(msg)
-        if lb_or_ub == 'lb':
-            if new_bnd < pyo.value(v.lb) or new_bnd is None:
-                new_bnd = pyo.value(v.lb)
-        else:
-            if new_bnd > pyo.value(v.ub) or new_bnd is None:
-                new_bnd = pyo.value(v.ub)
-        new_bounds.append(new_bnd)
 
-        # remove the objective function
-        del model.__obj_bounds_tightening
+    if with_progress_bar:
+        if lb_or_ub == 'lb':
+            bnd_str = 'LBs'
+        else:
+            bnd_str = 'UBs'
+        for v in tqdm(vardatalist, ncols=100, desc='OBBT '+bnd_str, leave=False):
+            new_bnd = _single_solve(v=v, model=model, solver=solver, vardatalist=vardatalist, lb_or_ub=lb_or_ub)
+            new_bounds.append(new_bnd)
+    else:
+        for v in vardatalist:
+            new_bnd = _single_solve(v=v, model=model, solver=solver, vardatalist=vardatalist, lb_or_ub=lb_or_ub)
+            new_bounds.append(new_bnd)
 
     return new_bounds
 
@@ -262,7 +282,7 @@ def _build_vardatalist(model, varlist=None):
     return corrected_vardatalist
 
 
-def perform_obbt(model, solver, varlist=None, objective_ub=None, update_bounds=True):
+def perform_obbt(model, solver, varlist=None, objective_ub=None, update_bounds=True, with_progress_bar=False):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -280,6 +300,7 @@ def perform_obbt(model, solver, varlist=None, objective_ub=None, update_bounds=T
         bounds tightening problems constraining the objective to be less than objective_ub.
     update_bounds: bool
         If True, then the variable bounds will be updated
+    with_progress_bar: bool
 
     Returns
     -------
@@ -299,8 +320,8 @@ def perform_obbt(model, solver, varlist=None, objective_ub=None, update_bounds=T
 
     exc = None
     try:
-        local_lower_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='lb')
-        local_upper_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='ub')
+        local_lower_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='lb', with_progress_bar=with_progress_bar)
+        local_upper_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='ub', with_progress_bar=with_progress_bar)
         status = 1
         msg = None
     except Exception as err:

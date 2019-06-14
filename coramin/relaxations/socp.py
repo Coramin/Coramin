@@ -5,7 +5,9 @@ import warnings
 from .univariate import PWXSquaredRelaxationData, pw_x_squared_relaxation
 from .pw_mccormick import PWMcCormickRelaxationData, _build_pw_mccormick_relaxation
 from .custom_block import declare_custom_block
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list, _copy_v_pts_without_inf
+import math
+from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 
 import logging
 logger = logging.getLogger(__name__)
@@ -13,14 +15,13 @@ logger = logging.getLogger(__name__)
 
 def _build_pw_soc_relaxation(b, x, y, z, w, x_pts, y_pts, z_pts, relaxation_side=RelaxationSide.BOTH,
                              use_nonlinear_underestimator=False, pw_repn='INC', safety_tol=1e-10):
-    xlb = pyo.value(x.lb)
-    xub = pyo.value(x.ub)
-    ylb = pyo.value(y.lb)
-    yub = pyo.value(y.ub)
-    zlb = pyo.value(z.lb)
-    zub = pyo.value(z.ub)
-    wlb = pyo.value(w.lb)
-    wub = pyo.value(w.ub)
+    xlb = x_pts[0]
+    xub = x_pts[-1]
+    ylb = y_pts[0]
+    yub = y_pts[-1]
+    zlb = z_pts[0]
+    zub = z_pts[-1]
+    wlb, wub = tuple(_get_bnds_list(w))
 
     check_var_pts(x, x_pts)
     check_var_pts(y, y_pts)
@@ -46,18 +47,9 @@ def _build_pw_soc_relaxation(b, x, y, z, w, x_pts, y_pts, z_pts, relaxation_side
         raise ValueError(e)
 
     if relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
-        def get_v_sq_bounds(vlb, vub):
-            if (vlb <= 0) and (vub >= 0):
-                v_sq_lb = 0
-                v_sq_ub = max([vlb**2, vub**2])
-            else:
-                v_sq_lb = min([vlb**2, vub**2])
-                v_sq_ub = max([vlb**2, vub**2])
-            return v_sq_lb, v_sq_ub
-
-        b.x_sq = pyo.Var(bounds=get_v_sq_bounds(xlb, xub))
-        b.y_sq = pyo.Var(bounds=get_v_sq_bounds(ylb, yub))
-        b.zw = pyo.Var()
+        b.x_sq = pyo.Var(bounds=compute_bounds_on_expr(m.x**2))
+        b.y_sq = pyo.Var(bounds=compute_bounds_on_expr(m.y**2))
+        b.zw = pyo.Var(bounds=compute_bounds_on_expr(m.z*m.w))
         b.eq_x_sq_y_sq_zw = pyo.Constraint(expr=b.x_sq + b.y_sq == b.zw)
         b.x_sq_relaxation = pyo.Block()
         b.y_sq_relaxation = pyo.Block()
@@ -73,6 +65,10 @@ def _build_pw_soc_relaxation(b, x, y, z, w, x_pts, y_pts, z_pts, relaxation_side
         if use_nonlinear_underestimator:
             b.underestimator = pyo.Constraint(expr=x**2 + y**2 <= z*w)
         else:
+            x_pts = _copy_v_pts_without_inf(x_pts)
+            y_pts = _copy_v_pts_without_inf(y_pts)
+            z_pts = _copy_v_pts_without_inf(z_pts)
+
             b.underestimator = pyo.ConstraintList()
             for _x in x_pts:
                 for _y in y_pts:
@@ -212,30 +208,27 @@ class PWSOCRelaxationData(BasePWRelaxationData):
             res.append(self._z)
         return res
 
-    def _set_input(self, kwargs):
-        x = kwargs.pop('x')
-        y = kwargs.pop('y')
-        w = kwargs.pop('w')
-        z = kwargs.pop('z')
+    def set_input(self, x, y, w, z, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None):
 
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._yref.set_component(y)
         self._wref.set_component(w)
         self._zref.set_component(z)
 
-        xlb = pyo.value(self._x.lb)
-        xub = pyo.value(self._x.ub)
-        ylb = pyo.value(self._y.lb)
-        yub = pyo.value(self._y.ub)
-        zlb = pyo.value(self._z.lb)
-        zub = pyo.value(self._z.ub)
+        self._partitions[self._x] = _get_bnds_list(self._x)
+        self._partitions[self._y] = _get_bnds_list(self._y)
+        self._partitions[self._z] = _get_bnds_list(self._z)
 
-        self._partitions[self._x] = [xlb, xub]
-        self._partitions[self._y] = [ylb, yub]
-        self._partitions[self._z] = [zlb, zub]
+        self._pw_repn = pw_repn
+        self.use_linear_relaxation = use_linear_relaxation
 
-        self._pw_repn = kwargs.pop('pw_repn', 'INC')
-        self._use_linear_relaxation = kwargs.pop('use_linear_relaxation', True)
+    def build(self, x, y, w, z, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None):
+        self.set_input(x=x, y=y, w=w, z=z, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self.rebuild()
 
     def _build_relaxation(self):
         _build_pw_soc_relaxation(b=self, x=self._x, y=self._y, z=self._z, w=self._w, x_pts=self._partitions[self._x],
@@ -312,3 +305,6 @@ class PWSOCRelaxationData(BasePWRelaxationData):
     @use_linear_relaxation.setter
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
+
+    def _get_pprint_string(self, relational_operator_string):
+        return 'Relaxation for {0}*{1} {2} {3}**2 + {4}**2'.format(self._w.name, self._z.name, relational_operator_string, self._x.name, self._y.name)
