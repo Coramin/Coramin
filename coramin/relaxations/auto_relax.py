@@ -88,6 +88,18 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
             res = coef*res
         degree_map[res] = degree_1 + degree_2
         return res
+    elif arg1 is arg2:
+        # reformulate arg1 * arg2 as arg1**2
+        _new_relaxation_side_map = ComponentMap()
+        if coef is None:
+            _reformulated = arg1**2
+        else:
+            _reformulated = coef * arg1**2
+        _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
+        res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
+                          relaxation_side_map=_new_relaxation_side_map, counter=counter)
+        degree_map[res] = 1
+        return res
     elif (id(arg1), id(arg2), 'mul') in aux_var_map or (id(arg2), id(arg1), 'mul') in aux_var_map:
         if (id(arg1), id(arg2), 'mul') in aux_var_map:
             _aux_var, relaxation = aux_var_map[id(arg1), id(arg2), 'mul']

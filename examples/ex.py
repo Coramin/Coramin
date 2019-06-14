@@ -3,6 +3,18 @@ import coramin
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 
 
+"""
+This example demonstrates a couple features of Coramin:
+- Using the "add_cut" methods to refine relaxations with linear constraints
+- Optimization-based bounds tightening
+
+The example problem is 
+
+min x**4 - 3*x**2 + x
+"""
+
+
+# Build and solve the NLP
 nlp = pe.ConcreteModel()
 nlp.x = pe.Var(bounds=(-2, 2))
 nlp.obj = pe.Objective(expr=nlp.x**4 - 3*nlp.x**2 + nlp.x)
@@ -10,6 +22,17 @@ opt = pe.SolverFactory('ipopt')
 res = opt.solve(nlp)
 ub = pe.value(nlp.obj)
 
+# Build the relaxation
+"""
+Reformulate the NLP as
+
+min x4 - 3*x2 + x
+s.t.
+    x2 = x**2
+    x4 = x2**2
+
+Then relax the two constraints with PWXSquaredRelaxation objects.
+"""
 rel = pe.ConcreteModel()
 rel.x = pe.Var(bounds=(-2, 2))
 rel.x2 = pe.Var(bounds=compute_bounds_on_expr(rel.x**2))
@@ -20,10 +43,12 @@ rel.x4_con = coramin.relaxations.PWXSquaredRelaxation()
 rel.x4_con.build(x=rel.x2, w=rel.x4, use_linear_relaxation=True)
 rel.obj = pe.Objective(expr=rel.x4 - 3*rel.x2 + rel.x)
 
+
+# Now solve the relaxation and refine the convex sides of the constraints with add_cut
 print('*********************************')
 print('OA Cut Generation')
 print('*********************************')
-opt = pe.SolverFactory('gurobi_direct')
+opt = pe.SolverFactory('glpk')
 res = opt.solve(rel)
 lb = pe.value(rel.obj)
 print('gap: ' + str(100 * abs(ub - lb) / abs(ub)) + ' %')
@@ -36,10 +61,13 @@ for _iter in range(5):
     lb = pe.value(rel.obj)
     print('gap: ' + str(100 * abs(ub - lb) / abs(ub)) + ' %')
 
+# cuts generated with add_cut are discarded when rebuild is called (this is not true of add_point)
+# we want to discard the cuts generated above just to demonstrate OBBT
 for b in rel.component_data_objects(pe.Block, active=True, sort=True, descend_into=True):
     if isinstance(b, coramin.relaxations.BasePWRelaxationData):
         b.rebuild()
 
+# Now refine the relaxation with OBBT
 print('\n*********************************')
 print('OBBT')
 print('*********************************')
