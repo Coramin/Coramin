@@ -257,16 +257,56 @@ class BasePWRelaxationData(BaseRelaxationData):
         """
         raise NotImplementedError('This method should be implemented in the derived class.')
 
-    def add_cut(self):
-        if not hasattr(self, '_cuts'):
-            self._allow_changes = True
-            self._cuts = pyo.ConstraintList()
-            self._allow_changes = False
-        expr = self._get_cut_expr()
-        if expr is not None:
-            new_con = self._cuts.add(expr)
+    def add_cut(self, keep_cut=False, feasibility_tol=1e-6):
+        """
+        This function will add a linear cut to the relaxation. Cuts are only generated for the convex side of the
+        constraint (if the constraint has a convex side). For example, if the relaxation is a PWXSquaredRelaxationData
+        for y = x**2, the add_cut will add an underestimator at x.value (but only if y.value < x.value**2). If
+        relaxation is a PWXSquaredRelaxationData for y < x**2, then no cut will be added. If relaxation is is a
+        PWMcCormickRelaxationData, then no cut will be added.
+
+        Parameters
+        ----------
+        keep_cut: bool
+            If keep_cut is True, then add_point will also be called. Be careful if the relaxation object is relaxing
+            the nonconvex side of the constraint. Thus, the cut will be reconstructed when rebuild is called. If
+            keep_cut is False, then the cut will be discarded when rebuild is called.
+        feasibility_tol: float
+            If the constraint violation is less than feasibility_tol, then no cut is generated.
+
+        Returns
+        -------
+        new_con: pyomo.core.base.constraint.Constraint
+        """
+        if keep_cut:
+            self.add_point()
+
+        new_con = None
+        should_generate_cut = False
+
+        if self.is_convex():
+            if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
+                viol = self.get_violation()
+                if viol < -feasibility_tol:
+                    should_generate_cut = True
+        elif self.is_concave():
+            if self.relaxation_side == RelaxationSide.OVER or self.relaxation_side == RelaxationSide.BOTH:
+                viol = self.get_violation()
+                if viol > feasibility_tol:
+                    should_generate_cut = True
+
+        if should_generate_cut:
+            if not hasattr(self, '_cuts'):
+                self._allow_changes = True
+                self._cuts = pyo.ConstraintList()
+                self._allow_changes = False
+
+            cut_expr = self._get_cut_expr()
+            new_con = self._cuts.add(cut_expr)
             for i in self._persistent_solvers:
                 i.add_constraint(new_con)
+
+        return new_con
 
     def _get_cut_expr(self):
         raise NotImplementedError('The add_cut method is not implemented for objects of type {0}.'.format(type(self)))

@@ -80,71 +80,6 @@ def _build_pw_soc_relaxation(b, x, y, z, w, x_pts, y_pts, z_pts, relaxation_side
                         b.underestimator.add(_x**2 + _y**2 + 2*_x*(x-_x) + 2*_y*(y-_y) <= _w*z + _z*w - _z*_w + safety_tol)
 
 
-def _project_point_onto_cone(x_val, y_val, z_val, w_val):
-    """
-    Try to find a point on the cone x0, y0, z0, w0 such that
-
-    z0 = z_val
-    w0 = w_val
-    x0, y0 lie on the circle x**2 + y**2 == z_val*w_val and are as close as possible to x_val, y_val
-
-    In order to find such a point, we can require that x0 and y0 lie on the circle and that (x0,y0) and
-    (x_val, y_val) line on a line that passes through the origin. Therefore, we must solve the equations
-
-    x0**2 + y0**2 = z_val*w_val
-    y0 = (y_val/x_val) * x0
-
-    The solution to these equations is
-
-    x0 = +/- ((z_val * w_val * x_val**2) / (x_val**2 + y_val**2))**0.5
-    y0 = (y_val/x_val) * x0
-
-    However, x0 should take on the sign of x_val and y0 should take on the sign of y_val. Therefore,
-
-    x0 = sign(x_val) * ((z_val * w_val * x_val**2) / (x_val**2 + y_val**2))**0.5
-    y0 = (y_val/x_val) * x0
-
-    Parameters
-    ----------
-    x_val: float
-    y_val: float
-    z_val: float
-    w_val: float
-
-    Returns
-    -------
-    x0: float
-    y0: float
-    z0: float
-    w0: float
-    """
-    x_val = float(x_val)
-    y_val = float(y_val)
-    z_val = float(z_val)
-    w_val = float(w_val)
-
-    if z_val < 1e-8 or w_val < 1e-8:
-        x0 = x_val
-        y0 = y_val
-        zw_val = x0**2 + y0**2
-        if z_val > w_val:
-            z0 = z_val
-            w0 = zw_val / z0
-        elif w_val > z_val:
-            w0 = w_val
-            z0 = zw_val / w0
-        else:
-            raise NotImplementedError('this case is not supported yet.')
-    else:
-        z0 = z_val
-        w0 = w_val
-
-        x0 = x_val * ((z_val * w_val) / (x_val**2 + y_val**2)) ** 0.5
-        y0 = y_val * ((z_val * w_val) / (x_val**2 + y_val**2)) ** 0.5
-
-    assert abs(x0**2 + y0**2 - z0*w0) <= 1e-12
-
-    return x0, y0, z0, w0
 
 
 @declare_custom_block(name='PWSOCRelaxation')
@@ -245,21 +180,11 @@ class PWSOCRelaxationData(BasePWRelaxationData):
         to the partitioning! This method does not change the partitioning!
         The current relaxation is not discarded and rebuilt. A constraint is simply added.
         """
-        expr = None
-        viol = self.get_violation()
-        if viol >= 0:
-            e = 'Cannot add cut; constraint is violated in the wrong direction; no constraint will be added.'
-            warnings.warn(e)
-            logger.warning(e)
-        else:
-            xval = pyo.value(self._x)
-            yval = pyo.value(self._y)
-            zval = pyo.value(self._z)
-            wval = pyo.value(self._w)
-            x0, y0, z0, w0 = _project_point_onto_cone(xval, yval, zval, wval)
-            if x0**2 + y0**2 + 2*x0*(xval-x0) + 2*y0*(yval-y0) <= w0*zval + z0*wval - z0*w0:
-                raise RuntimeError('cut does not cut off point!')
-            expr = x0**2 + y0**2 + 2*x0*(self._x - x0) + 2*y0*(self._y - y0) <= w0*self._z + z0*self._w - z0*w0
+        x0 = pyo.value(self._x)
+        y0 = pyo.value(self._y)
+        z0 = pyo.value(self._z)
+        w0 = pyo.value(self._w)
+        expr = x0**2 + y0**2 + 2*x0*(self._x - x0) + 2*y0*(self._y - y0) <= w0*self._z + z0*self._w - z0*w0
 
         return expr
 

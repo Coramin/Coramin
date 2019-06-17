@@ -702,15 +702,8 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         to the partitioning! This method does not change the partitioning!
         The current relaxation is not discarded and rebuilt. A constraint is simply added.
         """
-        expr = None
-        viol = self.get_violation()
-        if viol >= 0:
-            e = 'Cannot add cut; constraint is violated in the wrong direction; no constraint will be added.'
-            warnings.warn(e)
-            logger.warning(e)
-        else:
-            xval = pyo.value(self._x)
-            expr = self._w >= 2*xval*self._x - xval**2
+        xval = pyo.value(self._x)
+        expr = self._w >= 2*xval*self._x - xval**2
 
         return expr
 
@@ -848,22 +841,14 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         to the partitioning! This method does not change the partitioning!
         The current relaxation is not discarded and rebuilt. A constraint is simply added.
         """
-        expr = None
-        viol = self.get_violation()
-        if ((viol > 0 and self._function_shape == FunctionShape.CONVEX) or
-                (viol < 0 and self._function_shape == FunctionShape.CONCAVE)):
-            e = 'Cannot add cut; constraint is violated in the wrong direction; no constraint will be added.'
-            warnings.warn(e)
-            logger.warning(e)
+        _eval = _FxExpr(self._f_x_expr, self._x)
+        if self._function_shape == FunctionShape.CONVEX:
+            xval = self._x.value
+            expr = self._w >= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
         else:
-            _eval = _FxExpr(self._f_x_expr)
-            if self._function_shape == FunctionShape.CONVEX:
-                xval = self._x.value
-                expr = self._w >= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
-            else:
-                assert self._function_shape == FunctionShape.CONCAVE
-                xval = self._x.value
-                expr = self._w <= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
+            assert self._function_shape == FunctionShape.CONCAVE
+            xval = self._x.value
+            expr = self._w <= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
 
         return expr
 
@@ -996,15 +981,8 @@ class PWCosRelaxationData(BasePWRelaxationData):
         to the partitioning! This method does not change the partitioning!
         The current relaxation is not discarded and rebuilt. A constraint is simply added.
         """
-        expr = None
-        viol = self.get_violation()
-        if viol <= 0:
-            e = 'Cannot add cut; constraint is violated in the wrong direction; no constraint will be added.'
-            warnings.warn(e)
-            logger.warning(e)
-        else:
-            xval = pyo.value(self._x)
-            expr = self._w <= pyo.cos(xval) - pyo.sin(xval) * (self._x - xval)
+        xval = pyo.value(self._x)
+        expr = self._w <= pyo.cos(xval) - pyo.sin(xval) * (self._x - xval)
 
         return expr
 
