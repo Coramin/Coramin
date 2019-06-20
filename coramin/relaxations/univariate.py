@@ -9,7 +9,7 @@ import scipy.optimize
 from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list, _copy_v_pts_without_inf
 from pyomo.opt import SolverStatus, TerminationCondition
 import logging
-from pyomo.contrib.derivatives.differentiate import reverse_sd, reverse_ad
+from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd, reverse_ad
 logger = logging.getLogger(__name__)
 pe = pyo
 
