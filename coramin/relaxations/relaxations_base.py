@@ -166,29 +166,38 @@ class BasePWRelaxationData(BaseRelaxationData):
         self._partitions = ComponentMap()
         """ComponentMap: var: list of float"""
 
-        self._saved_partitions = []
+        self._saved_partitions = list()
         """list of CompnentMap"""
+
+        self._oa_points = list()
+        """List of ComponentMap. Each entry in the list specifies a point at which outer approximation cuts
+        should be built for convex/concave constraints."""
+
+        self._saved_oa_points = list()
 
     def rebuild(self):
         """
         Remove any auto-created vars/constraints from the relaxation block and recreate it
         """
         self.clean_partitions()
+        self.clean_oa_points()
         BaseRelaxationData.rebuild(self)
 
     def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
         self._partitions = ComponentMap()
-        self._saved_partitions = []
+        self._saved_partitions = list()
+        self._oa_points = list()
+        self._saved_oa_points = list()
         BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
 
-    def add_point(self):
+    def add_parition_point(self):
         """
         Add a point to the current partitioning. This does not rebuild the relaxation. You must call build_relaxation
         to rebuild the relaxation.
         """
         raise NotImplementedError('This method should be implemented in the derived class.')
 
-    def _add_point(self, var, value=None):
+    def _add_partition_point(self, var, value=None):
         if value is not None:
             vlb, vub = tuple(_get_bnds_list(var))
             if (vlb < value) and (value < vub):
@@ -200,6 +209,8 @@ class BasePWRelaxationData(BaseRelaxationData):
                 logger.warning(e)
         else:
             self._partitions[var].append(var.value)
+
+    def add_oa_point(self):
 
     def push_partitions(self):
         """
