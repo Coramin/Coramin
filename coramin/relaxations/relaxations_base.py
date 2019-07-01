@@ -11,6 +11,7 @@ import logging
 import math
 from ._utils import _get_bnds_list
 import sys
+from pyomo.core.expr import taylor_series_expansion
 
 pyo = pe
 logger = logging.getLogger(__name__)
@@ -18,6 +19,25 @@ logger = logging.getLogger(__name__)
 """
 Base classes for relaxations
 """
+
+
+class _ValueManager(object):
+    def __init__(self):
+        self.orig_values = pe.ComponentMap()
+
+    def save_values(self, variables):
+        self.orig_values = pe.ComponentMap()
+        for v in variables:
+            self.orig_values[v] = v.value
+
+    def pop_values(self):
+        for v, val in self.orig_values.items():
+            v.value = val
+
+
+def _load_var_values(var_value_map):
+    for v, val in var_value_map.items():
+        v.value = val
 
 
 @declare_custom_block(name='BaseRelaxation')
@@ -44,6 +64,15 @@ class BaseRelaxationData(_BlockData):
             self._persistent_solvers = ComponentSet(self._persistent_solvers)
         self._relaxation_side = relaxation_side
         assert self._relaxation_side in RelaxationSide
+
+    def get_aux_var(self):
+        return self._aux_var
+
+    def get_rhs_vars(self):
+        raise NotImplementedError('This method should be implemented by subclasses')
+
+    def get_rhs_expr(self):
+        raise NotImplementedError('This method should be implemented by subclasses')
 
     @property
     def use_linear_relaxation(self):
@@ -124,6 +153,26 @@ class BaseRelaxationData(_BlockData):
         """
         raise NotImplementedError('This method should be implemented in the derived class.')
 
+    def is_rhs_convex(self):
+        """
+        Returns True if linear underestimators do not need binaries. Otherwise, returns False.
+
+        Returns
+        -------
+        bool
+        """
+        raise NotImplementedError('This method should be implemented in the derived class.')
+
+    def is_rhs_concave(self):
+        """
+        Returns True if linear overestimators do not need binaries. Otherwise, returns False.
+
+        Returns
+        -------
+        bool
+        """
+        raise NotImplementedError('This method should be implemented in the derived class.')
+
     @property
     def relaxation_side(self):
         return self._relaxation_side
@@ -163,17 +212,13 @@ class BasePWRelaxationData(BaseRelaxationData):
     def __init__(self, component):
         BaseRelaxationData.__init__(self, component)
 
-        self._partitions = ComponentMap()
-        """ComponentMap: var: list of float"""
-
-        self._saved_partitions = list()
-        """list of CompnentMap"""
-
-        self._oa_points = list()
-        """List of ComponentMap. Each entry in the list specifies a point at which outer approximation cuts
-        should be built for convex/concave constraints."""
-
+        self._partitions = ComponentMap()  # ComponentMap: var: list of float
+        self._saved_partitions = list()  # list of CompnentMap
+        self._oa_points = list()  # List of ComponentMap. Each entry in the list specifies a point at which an outer
+                                  # approximation cut should be built for convex/concave constraints.
         self._saved_oa_points = list()
+        self._cuts = pe.ConstraintList()
+        self.feasibility_tol = 1e-6
 
     def rebuild(self):
         """
@@ -182,35 +227,54 @@ class BasePWRelaxationData(BaseRelaxationData):
         self.clean_partitions()
         self.clean_oa_points()
         BaseRelaxationData.rebuild(self)
+        self._allow_changes = True
+        self._cuts = pe.ConstraintList()
+        self._allow_changes = False
+        val_mngr = _ValueManager()
+        val_mngr.save_values(self.get_rhs_vars())
+        for pt in self._oa_points:
+            _load_var_values(pt)
+            self.add_cut(keep_cut=False, check_violation=False)  # check_violation has to be False because we are not loading the value of aux_var
+        val_mngr.pop_values()
 
-    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None, feasibility_tol=1e-6):
         self._partitions = ComponentMap()
         self._saved_partitions = list()
         self._oa_points = list()
         self._saved_oa_points = list()
+        self.feasibility_tol = feasibility_tol
         BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
 
     def add_parition_point(self):
         """
-        Add a point to the current partitioning. This does not rebuild the relaxation. You must call build_relaxation
+        Add a point to the current partitioning. This does not rebuild the relaxation. You must call rebuild()
         to rebuild the relaxation.
         """
         raise NotImplementedError('This method should be implemented in the derived class.')
 
     def _add_partition_point(self, var, value=None):
-        if value is not None:
-            vlb, vub = tuple(_get_bnds_list(var))
-            if (vlb < value) and (value < vub):
-                self._partitions[var].append(value)
-            else:
-                e = 'The value provided to add_point was not between the variables lower \n' + \
-                              'and upper bounds. No point was added.'
-                warnings.warn(e)
-                logger.warning(e)
-        else:
-            self._partitions[var].append(var.value)
+        if value is None:
+            value = pe.value(var)
+        # if the point is outside the variable's bounds, then it will simply get removed when clean_partitions
+        # gets called.
+        self._partitions[var].append(value)
 
-    def add_oa_point(self):
+    def add_oa_point(self, var_values=None):
+        """
+        Add a point at which an outer-approximation cut for a convex constraint should be added. This does not
+        rebuild the relaxation. You must call rebuild() for the constraint to get added.
+
+        Parameters
+        ----------
+        var_values: pe.ComponentMap
+        """
+        if var_values is None:
+            var_values = pe.ComponentMap()
+            for v in self.get_rhs_vars():
+                var_values[v] = v.value
+        else:
+            var_values = pe.ComponentMap(var_values)
+        self._oa_points.append(var_values)
 
     def push_partitions(self):
         """
@@ -248,27 +312,36 @@ class BasePWRelaxationData(BaseRelaxationData):
                 pts.append(ub)
                 self._partitions[var] = pts
 
-    def is_convex(self):
+    def push_oa_points(self):
         """
-        Returns True if linear underestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
+        Save the current list of OA points for later use (this clears the current set of OA points until popped.)
         """
-        raise NotImplementedError('This method should be implemented in the derived class.')
+        self._saved_oa_points.append(self._oa_points)
+        self.clear_oa_points()
 
-    def is_concave(self):
+    def clear_oa_points(self):
         """
-        Returns True if linear overestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
+        Delete any existing OA points.
         """
-        raise NotImplementedError('This method should be implemented in the derived class.')
+        self._oa_points = list()
 
-    def add_cut(self, keep_cut=False, feasibility_tol=1e-6):
+    def pop_oa_points(self):
+        """
+        Use the most recently saved list of OA points
+        """
+        self._oa_points = self._saved_oa_points.pop(-1)
+
+    def clean_oa_points(self):
+        # For each OA point, if the point is outside variable bounds, move the point to the variable bounds
+        for pts in self._oa_points:
+            for v, pt in pts.items():
+                lb, ub = tuple(_get_bnds_list(v))
+                if pt < lb:
+                    pts[v] = lb
+                if pt > ub:
+                    pts[v] = ub
+
+    def add_cut(self, keep_cut=True, check_violation=False):
         """
         This function will add a linear cut to the relaxation. Cuts are only generated for the convex side of the
         constraint (if the constraint has a convex side). For example, if the relaxation is a PWXSquaredRelaxationData
@@ -279,48 +352,46 @@ class BasePWRelaxationData(BaseRelaxationData):
         Parameters
         ----------
         keep_cut: bool
-            If keep_cut is True, then add_point will also be called. Be careful if the relaxation object is relaxing
+            If keep_cut is True, then add_oa_point will also be called. Be careful if the relaxation object is relaxing
             the nonconvex side of the constraint. Thus, the cut will be reconstructed when rebuild is called. If
             keep_cut is False, then the cut will be discarded when rebuild is called.
-        feasibility_tol: float
-            If the constraint violation is less than feasibility_tol, then no cut is generated.
+        check_violation: bool
+            If True, then a cut is only added if the cut generated would cut off the current point (current values
+            of the variables).
 
         Returns
         -------
         new_con: pyomo.core.base.constraint.Constraint
         """
         if keep_cut:
-            self.add_point()
+            self.add_oa_point()
 
-        new_con = None
-        should_generate_cut = False
+        cut_expr = None
 
-        if self.is_convex():
+        if self.is_rhs_convex():
             if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
-                viol = self.get_violation()
-                if viol < -feasibility_tol:
-                    should_generate_cut = True
-        elif self.is_concave():
+                if check_violation:
+                    viol = self.get_violation()
+                    if viol < -self.feasibility_tol:
+                        cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
+                else:
+                    cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
+        elif self.is_rhs_concave():
             if self.relaxation_side == RelaxationSide.OVER or self.relaxation_side == RelaxationSide.BOTH:
-                viol = self.get_violation()
-                if viol > feasibility_tol:
-                    should_generate_cut = True
-
-        if should_generate_cut:
-            if not hasattr(self, '_cuts'):
-                self._allow_changes = True
-                self._cuts = pyo.ConstraintList()
-                self._allow_changes = False
-
-            cut_expr = self._get_cut_expr()
+                if check_violation:
+                    viol = self.get_violation()
+                    if viol > self.feasibility_tol:
+                        cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
+                else:
+                    cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
+        if cut_expr is not None:
             new_con = self._cuts.add(cut_expr)
             for i in self._persistent_solvers:
                 i.add_constraint(new_con)
+        else:
+            new_con = None
 
         return new_con
-
-    def _get_cut_expr(self):
-        raise NotImplementedError('The add_cut method is not implemented for objects of type {0}.'.format(type(self)))
 
     def get_abs_violation(self):
         return abs(self.get_violation())

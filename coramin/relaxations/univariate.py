@@ -635,13 +635,13 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
 @declare_custom_block(name='PWXSquaredRelaxation')
 class PWXSquaredRelaxationData(BasePWRelaxationData):
     """
-    A helper class for building and modifying piecewise relaxations of w = x**2.
+    A helper class for building and modifying piecewise relaxations of aux_var = x**2.
 
     Parameters
     ----------
     x: pyomo.core.base.var._GeneralVarData
         The "x" variable in w=x**2.
-    w: pyomo.core.base.var._GeneralVarData
+    aux_var: pyomo.core.base.var._GeneralVarData
         The auxillary variable replacing x**2
     pw_repn: str
         This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
@@ -656,7 +656,7 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
     def __init__(self, component):
         BasePWRelaxationData.__init__(self, component)
         self._xref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
+        self._aux_var_ref = ComponentWeakRef(None)
         self._pw_repn = 'INC'
         self._use_linear_relaxation = True
 
@@ -665,8 +665,14 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         return self._xref.get_component()
 
     @property
-    def _w(self):
-        return self._wref.get_component()
+    def _aux_var(self):
+        return self._aux_var_ref.get_component()
+
+    def get_rhs_vars(self):
+        return [self._x]
+
+    def get_rhs_expr(self):
+        return self._x**2
 
     def vars_with_bounds_in_relaxation(self):
         v = []
@@ -674,40 +680,31 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def set_input(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None, feasibility_tol=1e-6):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        feasibility_tol=feasibility_tol)
         self._xref.set_component(x)
-        self._wref.set_component(w)
+        self._aux_var_ref.set_component(aux_var)
         self._pw_repn = pw_repn
         self.use_linear_relaxation = use_linear_relaxation
         self._partitions[self._x] = _get_bnds_list(self._x)
 
-    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-              persistent_solvers=None):
-        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
-                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def build(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None, feasibility_tol=1e-6):
+        self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                       feasibility_tol=feasibility_tol)
         self.rebuild()
 
     def _build_relaxation(self):
-        pw_x_squared_relaxation(self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
-                                pw_repn=self._pw_repn, relaxation_side=self._relaxation_side,
-                                use_nonlinear_underestimator=(not self._use_linear_relaxation))
+        # The base class takes care of the underestimators
+        if self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
+            pw_x_squared_relaxation(self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                    pw_repn=self._pw_repn, relaxation_side=RelaxationSide.OVER,
+                                    use_nonlinear_underestimator=(not self._use_linear_relaxation))
 
-    def _get_cut_expr(self):
-        """
-        Add a linear cut on the convex side of the constraint based on the current
-        values of the variables. There is no need to call rebuild. This
-        method directly adds a constraint to the block. A new point will NOT be added
-        to the partitioning! This method does not change the partitioning!
-        The current relaxation is not discarded and rebuilt. A constraint is simply added.
-        """
-        xval = pyo.value(self._x)
-        expr = self._w >= 2*xval*self._x - xval**2
-
-        return expr
-
-    def add_point(self, value=None):
+    def add_parition_point(self, value=None):
         """
         This method adds one point to the partitioning of x. If value is not
         specified, a single point will be added to the partitioning of x at the current value of x. If value is
@@ -730,7 +727,7 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         """
         return self._w.value - self._x.value ** 2
 
-    def is_convex(self):
+    def is_rhs_convex(self):
         """
         Returns True if linear underestimators do not need binaries. Otherwise, returns False.
 
@@ -740,7 +737,7 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         """
         return True
 
-    def is_concave(self):
+    def is_rhs_concave(self):
         """
         Returns True if linear overestimators do not need binaries. Otherwise, returns False.
 
@@ -788,7 +785,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
     def __init__(self, component):
         BasePWRelaxationData.__init__(self, component)
         self._xref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
+        self._aux_var_ref = ComponentWeakRef(None)
         self._pw_repn = 'INC'
         self._function_shape = FunctionShape.UNKNOWN
         self._f_x_expr = None
@@ -798,8 +795,14 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         return self._xref.get_component()
 
     @property
-    def _w(self):
-        return self._wref.get_component()
+    def _aux_var(self):
+        return self._aux_var_ref.get_component()
+
+    def get_rhs_vars(self):
+        return [self._x]
+
+    def get_rhs_expr(self):
+        return self._f_x_expr
 
     def vars_with_bounds_in_relaxation(self):
         v = []
@@ -811,46 +814,35 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
             v.append(self._x)
         return v
 
-    def set_input(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None):
+    def set_input(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None, feasibility_tol=1e-6):
 
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        feasibility_tol=feasibility_tol)
         self._pw_repn = pw_repn
         self._function_shape = shape
         self._f_x_expr = f_x_expr
 
         self._xref.set_component(x)
-        self._wref.set_component(w)
+        self._aux_var_ref.set_component(aux_var)
         self._partitions[self._x] = _get_bnds_list(self._x)
 
-    def build(self, x, w, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self.set_input(x=x, w=w, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn, relaxation_side=relaxation_side,
-                       persistent_solvers=persistent_solvers)
+    def build(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None, feasibility_tol=1e-6):
+        self.set_input(x=x, aux_var=aux_var, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn,
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                       feasibility_tol=feasibility_tol)
         self.rebuild()
 
     def _build_relaxation(self):
-        pw_univariate_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x], f_x_expr=self._f_x_expr,
-                                 pw_repn=self._pw_repn, shape=self._function_shape,
-                                 relaxation_side=self._relaxation_side)
-
-    def _get_cut_expr(self):
-        """
-        Add a linear cut on the convex side of the constraint based on the current
-        values of the variables. There is no need to call rebuild. This
-        method directly adds a constraint to the block. A new point will NOT be added
-        to the partitioning! This method does not change the partitioning!
-        The current relaxation is not discarded and rebuilt. A constraint is simply added.
-        """
-        _eval = _FxExpr(self._f_x_expr, self._x)
-        if self._function_shape == FunctionShape.CONVEX:
-            xval = self._x.value
-            expr = self._w >= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
-        else:
-            assert self._function_shape == FunctionShape.CONCAVE
-            xval = self._x.value
-            expr = self._w <= _eval(xval) + _eval.deriv(xval) * (self._x - xval)
-
-        return expr
+        if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=self._function_shape,
+                                     relaxation_side=RelaxationSide.OVER)
+        elif self.is_rhs_concave() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=self._function_shape,
+                                     relaxation_side=RelaxationSide.UNDER)
 
     def add_point(self, value=None):
         """
@@ -875,7 +867,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         """
         return self._w.value - pyo.value(self._f_x_expr)
 
-    def is_convex(self):
+    def is_rhs_convex(self):
         """
         Returns True if linear underestimators do not need binaries. Otherwise, returns False.
 
@@ -885,7 +877,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         """
         return self._function_shape == FunctionShape.CONVEX
 
-    def is_concave(self):
+    def is_rhs_concave(self):
         """
         Returns True if linear overestimators do not need binaries. Otherwise, returns False.
 
