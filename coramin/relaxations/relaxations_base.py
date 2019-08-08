@@ -312,6 +312,20 @@ class BasePWRelaxationData(BaseRelaxationData):
                 pts.append(ub)
                 self._partitions[var] = pts
 
+    def get_active_partitions(self):
+        ans = ComponentMap()
+        for var, pts in self._partitions.items():
+            val = pyo.value(var)
+            lower = var.lb
+            upper = var.ub
+            for p in pts:
+                if val >= p and p > lower:
+                    lower = p
+                if val <= p and p < upper:
+                    upper = p
+            ans[var] = lower, upper
+        return ans
+
     def push_oa_points(self):
         """
         Save the current list of OA points for later use (this clears the current set of OA points until popped.)
