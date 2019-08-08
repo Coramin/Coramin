@@ -115,12 +115,8 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
                 solver.load_vars([v])
                 new_bnd = pyo.value(v.value)
         else:
-            if lb_or_ub == 'lb':
-                new_bnd = pyo.value(v.lb)
-            else:
-                new_bnd = pyo.value(v.ub)
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                v)
+            new_bnd = None
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(v)
             warnings.warn(msg)
             logger.warning(msg)
     else:
@@ -136,20 +132,29 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
                 model.solutions.load_from(results)
                 new_bnd = pyo.value(v.value)
         else:
-            if lb_or_ub == 'lb':
-                new_bnd = pyo.value(v.lb)
-            else:
-                new_bnd = pyo.value(v.ub)
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                v)
+            new_bnd = None
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(v)
             warnings.warn(msg)
             logger.warning(msg)
+
     if lb_or_ub == 'lb':
-        if new_bnd < pyo.value(v.lb) or new_bnd is None:
-            new_bnd = pyo.value(v.lb)
+        orig_lb = pyo.value(v.lb)
+        if new_bnd is None:
+            new_bnd = orig_lb
+        elif v.has_lb():
+            if new_bnd < orig_lb:
+                new_bnd = orig_lb
     else:
-        if new_bnd > pyo.value(v.ub) or new_bnd is None:
-            new_bnd = pyo.value(v.ub)
+        orig_ub = pyo.value(v.ub)
+        if new_bnd is None:
+            new_bnd = orig_ub
+        elif v.has_ub():
+            if new_bnd > orig_ub:
+                new_bnd = orig_ub
+
+    if new_bnd is None:
+        # Need nan instead of None for MPI communication; This is appropriately handled in perform_obbt().
+        new_bnd = np.nan
 
     # remove the objective function
     del model.__obj_bounds_tightening
@@ -353,6 +358,22 @@ def perform_obbt(model, solver, varlist=None, objective_ub=None, update_bounds=T
     else:
         global_lower = local_lower_bounds
         global_upper = local_upper_bounds
+
+    tmp = list()
+    for i in global_lower:
+        if np.isnan(i):
+            tmp.append(None)
+        else:
+            tmp.append(float(i))
+    global_lower = tmp
+
+    tmp = list()
+    for i in global_upper:
+        if np.isnan(i):
+            tmp.append(None)
+        else:
+            tmp.append(float(i))
+    global_upper = tmp
 
     _lower_bounds = None
     _upper_bounds = None
