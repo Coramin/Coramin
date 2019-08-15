@@ -235,7 +235,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                     else:
                         assert non_pw_constr_type == 'UB'
                         b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
-                except (ZeroDivisionError, ValueError):
+                except (ZeroDivisionError, ValueError, OverflowError):
                     pass
 
 
