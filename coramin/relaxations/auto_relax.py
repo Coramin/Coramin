@@ -12,6 +12,7 @@ from .univariate import PWUnivariateRelaxation, PWXSquaredRelaxation, PWCosRelax
 from .pw_mccormick import PWMcCormickRelaxation
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
+from pyomo.core.base.expression import _GeneralExpressionData, SimpleExpression
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +426,11 @@ def _relax_leaf_to_root_UnaryFunctionExpression(node, values, aux_var_map, degre
         raise NotImplementedError('Cannot automatically relax ' + str(node))
 
 
+def _relax_leaf_to_root_GeneralExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    return arg
+
+
 _relax_leaf_to_root_map = dict()
 _relax_leaf_to_root_map[numeric_expr.ProductExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.SumExpression] = _relax_leaf_to_root_SumExpression
@@ -439,6 +445,8 @@ _relax_leaf_to_root_map[numeric_expr.NPV_NegationExpression] = _relax_leaf_to_ro
 _relax_leaf_to_root_map[numeric_expr.NPV_PowExpression] = _relax_leaf_to_root_PowExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_ReciprocalExpression] = _relax_leaf_to_root_ReciprocalExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_UnaryFunctionExpression] = _relax_leaf_to_root_UnaryFunctionExpression
+_relax_leaf_to_root_map[_GeneralExpressionData] = _relax_leaf_to_root_GeneralExpression
+_relax_leaf_to_root_map[SimpleExpression] = _relax_leaf_to_root_GeneralExpression
 
 
 def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
@@ -499,6 +507,11 @@ def _relax_root_to_leaf_UnaryFunctionExpression(node, relaxation_side_map):
         raise NotImplementedError('Cannot automatically relax ' + str(node))
 
 
+def _relax_root_to_leaf_GeneralExpression(node, relaxation_side_map):
+    relaxation_side = relaxation_side_map[node]
+    relaxation_side_map[node.expr] = relaxation_side
+
+
 _relax_root_to_leaf_map = dict()
 _relax_root_to_leaf_map[numeric_expr.ProductExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.SumExpression] = _relax_root_to_leaf_SumExpression
@@ -513,6 +526,8 @@ _relax_root_to_leaf_map[numeric_expr.NPV_NegationExpression] = _relax_root_to_le
 _relax_root_to_leaf_map[numeric_expr.NPV_PowExpression] = _relax_root_to_leaf_PowExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_ReciprocalExpression] = _relax_root_to_leaf_ReciprocalExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_UnaryFunctionExpression] = _relax_root_to_leaf_UnaryFunctionExpression
+_relax_root_to_leaf_map[_GeneralExpressionData] = _relax_root_to_leaf_GeneralExpression
+_relax_root_to_leaf_map[SimpleExpression] = _relax_root_to_leaf_GeneralExpression
 
 
 class _FactorableRelaxationVisitor(ExpressionValueVisitor):
