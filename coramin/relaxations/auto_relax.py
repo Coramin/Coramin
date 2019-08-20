@@ -566,6 +566,8 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
 
         if node.__class__ in _relax_root_to_leaf_map:
             _relax_root_to_leaf_map[node.__class__](node, self.relaxation_side_map)
+        else:
+            raise NotImplementedError('Cannot relax an expression of type ' + str(type(node)))
 
         return False, None
 
