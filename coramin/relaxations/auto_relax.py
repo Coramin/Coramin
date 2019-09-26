@@ -100,7 +100,7 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         _reformulated = coef * arg1**2
         _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
         res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
-                          relaxation_side_map=_new_relaxation_side_map, counter=counter)
+                          relaxation_side_map=_new_relaxation_side_map, counter=counter, degree_map=degree_map)
         degree_map[res] = 1
         return res
     elif (id(arg1), id(arg2), 'mul') in aux_var_map or (id(arg2), id(arg1), 'mul') in aux_var_map:
@@ -345,7 +345,8 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
                     _reformulated = arg1 * arg1 ** (arg2 - 1)
                     _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
                     res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
-                                      relaxation_side_map=_new_relaxation_side_map, counter=counter)
+                                      relaxation_side_map=_new_relaxation_side_map, counter=counter,
+                                      degree_map=degree_map)
                     degree_map[res] = 1
                     return res
             else:
@@ -379,7 +380,8 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
                     _reformulated = 1 / (arg1 ** (-arg2))
                     _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
                     res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
-                                      relaxation_side_map=_new_relaxation_side_map, counter=counter)
+                                      relaxation_side_map=_new_relaxation_side_map, counter=counter,
+                                      degree_map=degree_map)
                     degree_map[res] = 1
                     return res
             else:
@@ -409,7 +411,8 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
             _reformulated = pe.exp(arg2 * pe.log(arg1))
             _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
             res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
-                              relaxation_side_map=_new_relaxation_side_map, counter=counter)
+                              relaxation_side_map=_new_relaxation_side_map, counter=counter,
+                              degree_map=degree_map)
             degree_map[res] = 1
             return res
 
@@ -524,8 +527,31 @@ _relax_leaf_to_root_map[SimpleExpression] = _relax_leaf_to_root_GeneralExpressio
 
 def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
     arg1, arg2 = node.args
-    relaxation_side_map[arg1] = RelaxationSide.BOTH
-    relaxation_side_map[arg2] = RelaxationSide.BOTH
+    if is_fixed(arg1):
+        relaxation_side_map[arg1] = RelaxationSide.BOTH
+        if pe.value(arg1) >= 0:
+            relaxation_side_map[arg2] = relaxation_side_map[node]
+        else:
+            if relaxation_side_map[node] == RelaxationSide.UNDER:
+                relaxation_side_map[arg2] = RelaxationSide.OVER
+            elif relaxation_side_map[node] == RelaxationSide.OVER:
+                relaxation_side_map[arg2] = RelaxationSide.UNDER
+            else:
+                relaxation_side_map[arg2] = RelaxationSide.BOTH
+    elif is_fixed(arg2):
+        relaxation_side_map[arg2] = RelaxationSide.BOTH
+        if pe.value(arg2) >= 0:
+            relaxation_side_map[arg1] = relaxation_side_map[node]
+        else:
+            if relaxation_side_map[node] == RelaxationSide.UNDER:
+                relaxation_side_map[arg1] = RelaxationSide.OVER
+            elif relaxation_side_map[node] == RelaxationSide.OVER:
+                relaxation_side_map[arg1] = RelaxationSide.UNDER
+            else:
+                relaxation_side_map[arg1] = RelaxationSide.BOTH
+    else:
+        relaxation_side_map[arg1] = RelaxationSide.BOTH
+        relaxation_side_map[arg2] = RelaxationSide.BOTH
 
 
 def _relax_root_to_leaf_ReciprocalExpression(node, relaxation_side_map):
@@ -558,10 +584,10 @@ def _relax_root_to_leaf_NegationExpression(node, relaxation_side_map):
         relaxation_side_map[arg] = RelaxationSide.UNDER
 
 
-def _relax_root_to_leaf_PowExpression(node, relaxations_side_map):
+def _relax_root_to_leaf_PowExpression(node, relaxation_side_map):
     arg1, arg2 = node.args
-    relaxations_side_map[arg1] = RelaxationSide.BOTH
-    relaxations_side_map[arg2] = RelaxationSide.BOTH
+    relaxation_side_map[arg1] = RelaxationSide.BOTH
+    relaxation_side_map[arg2] = RelaxationSide.BOTH
 
 
 def _relax_root_to_leaf_exp(node, relaxation_side_map):
@@ -617,12 +643,12 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
     auxiliary variables, and relaxations relating the auxilliary variables to
     the original variables.
     """
-    def __init__(self, aux_var_map, parent_block, relaxation_side_map, counter):
+    def __init__(self, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
         self.aux_var_map = aux_var_map
         self.parent_block = parent_block
         self.relaxation_side_map = relaxation_side_map
         self.counter = counter
-        self.degree_map = ComponentMap()
+        self.degree_map = degree_map
 
     def visit(self, node, values):
         if node.__class__ in _relax_leaf_to_root_map:
@@ -653,9 +679,10 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
         return False, None
 
 
-def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter):
+def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
     visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
-                                           relaxation_side_map=relaxation_side_map, counter=counter)
+                                           relaxation_side_map=relaxation_side_map, counter=counter,
+                                           degree_map=degree_map)
     new_expr = visitor.dfs_postorder_stack(expr)
     return new_expr
 
@@ -673,6 +700,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
 
     aux_var_map = dict()
     counter_dict = dict()
+    degree_map = ComponentMap()
 
     for c in m.component_data_objects(ctype=Constraint, active=True, descend_into=descend_into, sort=True):
         body_degree = polynomial_degree(c.body)
@@ -703,7 +731,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
             counter_dict[parent_block] = counter
 
         new_body = _relax_expr(expr=c.body, aux_var_map=aux_var_map, parent_block=parent_block,
-                               relaxation_side_map=relaxation_side_map, counter=counter)
+                               relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         lb = c.lower
         ub = c.upper
         parent_block.aux_cons.add(pe.inequality(lb, new_body, ub))
@@ -743,7 +771,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
             parent_block.aux_objectives = pe.ObjectiveList()
 
         new_body = _relax_expr(expr=c.expr, aux_var_map=aux_var_map, parent_block=parent_block,
-                               relaxation_side_map=relaxation_side_map, counter=counter)
+                               relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         sense = c.sense
         parent_block.aux_objectives.add(new_body, sense=sense)
         parent_component = c.parent_component()
