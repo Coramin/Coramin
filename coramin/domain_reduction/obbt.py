@@ -62,10 +62,12 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
 
     # remove the obj upper bound constraint
     using_persistent_solver = False
+    if isinstance(solver, PersistentSolver):
+        using_persistent_solver = True
+
     if hasattr(model, '__objective_ineq'):
-        if isinstance(solver, PersistentSolver):
+        if using_persistent_solver:
             solver.remove_constraint(model.__objective_ineq)
-            using_persistent_solver = True
         del model.__objective_ineq
 
     # reactivate the objectives that we deactivated
@@ -120,13 +122,8 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
                 solver.load_vars([v])
                 new_bnd = pyo.value(v.value)
         else:
-            if lb_or_ub == 'lb':
-                new_bnd = pyo.value(v.lb)
-            else:
-                new_bnd = pyo.value(v.ub)
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                v)
-            warnings.warn(msg)
+            new_bnd = None
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
             logger.warning(msg)
     else:
         results = solver.solve(model, tee=False, load_solutions=False)
@@ -141,20 +138,28 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
                 model.solutions.load_from(results)
                 new_bnd = pyo.value(v.value)
         else:
-            if lb_or_ub == 'lb':
-                new_bnd = pyo.value(v.lb)
-            else:
-                new_bnd = pyo.value(v.ub)
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. The lb was not changed.'.format(
-                v)
-            warnings.warn(msg)
+            new_bnd = None
+            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
             logger.warning(msg)
+
     if lb_or_ub == 'lb':
-        if new_bnd < pyo.value(v.lb) or new_bnd is None:
-            new_bnd = pyo.value(v.lb)
+        orig_lb = pyo.value(v.lb)
+        if new_bnd is None:
+            new_bnd = orig_lb
+        elif v.has_lb():
+            if new_bnd < orig_lb:
+                new_bnd = orig_lb
     else:
-        if new_bnd > pyo.value(v.ub) or new_bnd is None:
-            new_bnd = pyo.value(v.ub)
+        orig_ub = pyo.value(v.ub)
+        if new_bnd is None:
+            new_bnd = orig_ub
+        elif v.has_ub():
+            if new_bnd > orig_ub:
+                new_bnd = orig_ub
+
+    if new_bnd is None:
+        # Need nan instead of None for MPI communication; This is appropriately handled in perform_obbt().
+        new_bnd = np.nan
 
     # remove the objective function
     del model.__obj_bounds_tightening
@@ -186,7 +191,11 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False)
             bnd_str = 'LBs'
         else:
             bnd_str = 'UBs'
-        for v in tqdm(vardatalist, ncols=100, desc='OBBT '+bnd_str, leave=False):
+        if mpi_available:
+            tqdm_position = mpiu.MPI.COMM_WORLD.Get_rank()
+        else:
+            tqdm_position = 0
+        for v in tqdm(vardatalist, ncols=100, desc='OBBT '+bnd_str, leave=False, position=tqdm_position):
             new_bnd = _single_solve(v=v, model=model, solver=solver, vardatalist=vardatalist, lb_or_ub=lb_or_ub)
             new_bounds.append(new_bnd)
     else:
@@ -363,6 +372,22 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     else:
         global_lower = local_lower_bounds
         global_upper = local_upper_bounds
+
+    tmp = list()
+    for i in global_lower:
+        if np.isnan(i):
+            tmp.append(None)
+        else:
+            tmp.append(float(i))
+    global_lower = tmp
+
+    tmp = list()
+    for i in global_upper:
+        if np.isnan(i):
+            tmp.append(None)
+        else:
+            tmp.append(float(i))
+    global_upper = tmp
 
     _lower_bounds = None
     _upper_bounds = None
