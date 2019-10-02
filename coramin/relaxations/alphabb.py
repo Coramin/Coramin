@@ -1,6 +1,6 @@
 import pyomo.environ as pyo
 from pyomo.core.kernel.component_map import ComponentMap
-from pyomo.contrib.derivatives.differentiate import reverse_sd
+from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 from coramin.utils.coramin_enums import RelaxationSide
 from coramin.relaxations.custom_block import declare_custom_block
