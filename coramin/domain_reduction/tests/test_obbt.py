@@ -105,7 +105,7 @@ class TestBoundsTightener(unittest.TestCase):
         solver = pyo.SolverFactory('ipopt')
         with self.assertRaises(ValueError):
             coramin.domain_reduction.perform_obbt(model=model, solver=solver, varlist=[model.x, model.y],
-                                                  objective_ub=0.0, update_bounds=True)
+                                                  objective_bound=0.0, update_bounds=True)
 
 
 if __name__ == '__main__':
