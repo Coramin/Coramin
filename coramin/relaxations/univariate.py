@@ -192,7 +192,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                             logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_pt), str(x), str(f_x_expr)))
                             continue
                         tmp_pts.append(_pt)
-                    except (ZeroDivisionError, ValueError):
+                    except (ZeroDivisionError, ValueError, OverflowError):
                         pass
                 if len(tmp_pts) >= 2 and tmp_pts[0] == x_pts[0] and tmp_pts[-1] == x_pts[-1]:
                     b.pw_linear_under_over = pyo.Piecewise(w, x,
@@ -235,7 +235,7 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                     else:
                         assert non_pw_constr_type == 'UB'
                         b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
-                except (ZeroDivisionError, ValueError):
+                except (ZeroDivisionError, ValueError, OverflowError):
                     pass
 
 
