@@ -990,19 +990,6 @@ class PWCosRelaxationData(BasePWRelaxationData):
                           relaxation_side=self._relaxation_side, pw_repn=self._pw_repn,
                           use_quadratic_overestimator=(not self._use_linear_relaxation))
 
-    def _get_cut_expr(self):
-        """
-        Add a linear cut on the convex side of the constraint based on the current
-        values of the variables. There is no need to call build_relaxation. This
-        method directly adds a constraint to the block. A new point will NOT be added
-        to the partitioning! This method does not change the partitioning!
-        The current relaxation is not discarded and rebuilt. A constraint is simply added.
-        """
-        xval = pyo.value(self._x)
-        expr = self._w <= pyo.cos(xval) - pyo.sin(xval) * (self._x - xval)
-
-        return expr
-
     def add_point(self, value=None):
         """
         This method adds one point to the partitioning of x. If value is not

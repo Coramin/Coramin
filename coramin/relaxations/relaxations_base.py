@@ -224,7 +224,6 @@ class BasePWRelaxationData(BaseRelaxationData):
         Remove any auto-created vars/constraints from the relaxation block and recreate it
         """
         self.clean_partitions()
-        self.clean_oa_points()
         BaseRelaxationData.rebuild(self)
         self._allow_changes = True
         self._cuts = pe.ConstraintList()
@@ -342,16 +341,6 @@ class BasePWRelaxationData(BaseRelaxationData):
         Use the most recently saved list of OA points
         """
         self._oa_points = self._saved_oa_points.pop(-1)
-
-    def clean_oa_points(self):
-        # For each OA point, if the point is outside variable bounds, move the point to the variable bounds
-        for pts in self._oa_points:
-            for v, pt in pts.items():
-                lb, ub = tuple(_get_bnds_list(v))
-                if pt < lb:
-                    pts[v] = lb
-                if pt > ub:
-                    pts[v] = ub
 
     def add_cut(self, keep_cut=True, check_violation=False, feasibility_tol=1e-8):
         """
