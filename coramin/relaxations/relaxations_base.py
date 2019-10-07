@@ -218,7 +218,6 @@ class BasePWRelaxationData(BaseRelaxationData):
                                   # approximation cut should be built for convex/concave constraints.
         self._saved_oa_points = list()
         self._cuts = pe.ConstraintList()
-        self.feasibility_tol = 1e-6
 
     def rebuild(self):
         """
@@ -237,12 +236,11 @@ class BasePWRelaxationData(BaseRelaxationData):
             self.add_cut(keep_cut=False, check_violation=False)  # check_violation has to be False because we are not loading the value of aux_var
         val_mngr.pop_values()
 
-    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None, feasibility_tol=1e-6):
+    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
         self._partitions = ComponentMap()
         self._saved_partitions = list()
         self._oa_points = list()
         self._saved_oa_points = list()
-        self.feasibility_tol = feasibility_tol
         BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
 
     def add_parition_point(self):
@@ -355,7 +353,7 @@ class BasePWRelaxationData(BaseRelaxationData):
                 if pt > ub:
                     pts[v] = ub
 
-    def add_cut(self, keep_cut=True, check_violation=False):
+    def add_cut(self, keep_cut=True, check_violation=False, feasibility_tol=1e-8):
         """
         This function will add a linear cut to the relaxation. Cuts are only generated for the convex side of the
         constraint (if the constraint has a convex side). For example, if the relaxation is a PWXSquaredRelaxationData
@@ -371,7 +369,9 @@ class BasePWRelaxationData(BaseRelaxationData):
             keep_cut is False, then the cut will be discarded when rebuild is called.
         check_violation: bool
             If True, then a cut is only added if the cut generated would cut off the current point (current values
-            of the variables).
+            of the variables) by more than feasibility_tol.
+        feasibility_tol: float
+            Only used if check_violation is True
 
         Returns
         -------
@@ -386,7 +386,7 @@ class BasePWRelaxationData(BaseRelaxationData):
             if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
                 if check_violation:
                     viol = self.get_violation()
-                    if viol < -self.feasibility_tol:
+                    if viol < -feasibility_tol:
                         cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
                 else:
                     cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
@@ -394,7 +394,7 @@ class BasePWRelaxationData(BaseRelaxationData):
             if self.relaxation_side == RelaxationSide.OVER or self.relaxation_side == RelaxationSide.BOTH:
                 if check_violation:
                     viol = self.get_violation()
-                    if viol > self.feasibility_tol:
+                    if viol > feasibility_tol:
                         cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
                 else:
                     cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())

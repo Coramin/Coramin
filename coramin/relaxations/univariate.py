@@ -704,9 +704,8 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         return v
 
     def set_input(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None, feasibility_tol=1e-6):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                        feasibility_tol=feasibility_tol)
+                  persistent_solvers=None):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._xref.set_component(x)
         self._aux_var_ref.set_component(aux_var)
         self._pw_repn = pw_repn
@@ -714,10 +713,9 @@ class PWXSquaredRelaxationData(BasePWRelaxationData):
         self._partitions[self._x] = _get_bnds_list(self._x)
 
     def build(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-              persistent_solvers=None, feasibility_tol=1e-6):
+              persistent_solvers=None):
         self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
-                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                       feasibility_tol=feasibility_tol)
+                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self.rebuild()
 
     def _build_relaxation(self):
@@ -842,10 +840,9 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         return v
 
     def set_input(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None, feasibility_tol=1e-6, large_eval_tol=1e8):
+                  persistent_solvers=None, large_eval_tol=1e8):
 
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                        feasibility_tol=feasibility_tol)
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
         self._pw_repn = pw_repn
         self._function_shape = shape
         self._f_x_expr = f_x_expr
@@ -856,10 +853,10 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         self._partitions[self._x] = _get_bnds_list(self._x)
 
     def build(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-              persistent_solvers=None, feasibility_tol=1e-6, large_eval_tol=1e8):
+              persistent_solvers=None, large_eval_tol=1e8):
         self.set_input(x=x, aux_var=aux_var, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn,
                        relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                       feasibility_tol=feasibility_tol, large_eval_tol=large_eval_tol)
+                       large_eval_tol=large_eval_tol)
         self.rebuild()
 
     def _build_relaxation(self):
