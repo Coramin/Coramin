@@ -1,7 +1,7 @@
 import pyomo.environ as pe
 import coramin
 import unittest
-from pyomo.contrib.derivatives.differentiate import reverse_sd
+from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 from pyomo.core.expr.visitor import identify_variables
 import math
 

@@ -15,20 +15,11 @@ cache:
     directories:
         - $HOME/.ccache
 
-before_script: 
-    - "export DISPLAY=:99.0"
-    - "sh -e /etc/init.d/xvfb start"
-    - sleep 3 # give xvfb some time to start
-
 # setup miniconda for numpy, scipy, pandas
 before_install:
     - echo "before install"
     - export PATH=/usr/lib/ccache:$PATH
-    - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
-        wget http://repo.continuum.io/miniconda/Miniconda-3.16.0-Linux-x86_64.sh -O miniconda.sh;
-      else
-        wget http://repo.continuum.io/miniconda/Miniconda3-3.16.0-Linux-x86_64.sh -O miniconda.sh;
-      fi
+    - wget https://repo.anaconda.com/miniconda/Miniconda3-4.5.12-Linux-x86_64.sh -O miniconda.sh;
     - bash miniconda.sh -b -p $HOME/miniconda
     - export PATH="$HOME/miniconda/bin:$PATH"
     - hash -r
@@ -45,6 +36,7 @@ install:
     - ls -l /home/travis/miniconda/envs/test_env/lib
     - pip install git+https://github.com/PyUtilib/pyutilib
     - pip install git+https://github.com/Pyomo/pyomo
+    - conda install -c conda-forge mpi4py
     - conda install -c conda-forge ipopt
     - conda install -c conda-forge glpk
     #- pip install pyomo
