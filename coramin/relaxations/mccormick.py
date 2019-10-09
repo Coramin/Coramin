@@ -2,83 +2,11 @@ import logging
 import pyomo.environ as pyo
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from .custom_block import declare_custom_block
-from .relaxations_base import BaseRelaxationData, ComponentWeakRef
+from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
 import math
-from ._utils import _get_bnds_list
+from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list
 
 logger = logging.getLogger(__name__)
-
-
-@declare_custom_block(name='McCormickRelaxation')
-class McCormickRelaxationData(BaseRelaxationData):
-    def __init__(self, component):
-        BaseRelaxationData.__init__(self, component)
-        self._xref = ComponentWeakRef(None)
-        self._yref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
-        self._tol = 0
-
-    @property
-    def _x(self):
-        return self._xref.get_component()
-
-    @property
-    def _y(self):
-        return self._yref.get_component()
-
-    @property
-    def _w(self):
-        return self._wref.get_component()
-
-    def set_input(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self._xref.set_component(x)
-        self._yref.set_component(y)
-        self._wref.set_component(w)
-        self._tol = tol
-
-    def build(self, x, y, w, tol=0.0, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self.set_input(x=x, y=y, w=w, tol=tol, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self.rebuild()
-
-    def _build_relaxation(self):
-        x, y, w = self._x, self._y, self._w
-
-        if x is None or y is None or w is None:
-            raise ValueError('Trying to call McCormickRelaxation.build_relaxation, but at least one'
-                             ' of the input variables required (x, y, and/or w) has not been set or'
-                             ' it has been removed from the model. You must call "initialize" with valid'
-                             ' input before calling "build_relaxation"')
-        if self._relaxation_side is None or self._tol is None:
-            raise ValueError('Trying to call McCormickRelaxation.build_relaxation, but key data'
-                             ' has not been set. You must call "initialize" before "build_relaxation"')
-
-        _build_mccormick_relaxation(b=self, x=x, y=y, w=w, relaxation_side=self._relaxation_side, tol=self._tol)
-
-    def vars_with_bounds_in_relaxation(self):
-        return [self._x, self._y]
-
-    def _get_violation(self):
-        """
-        Get the absolute value of the current constraint violation.
-
-        Returns
-        -------
-        violation: float
-        """
-        return self._w.value - self._x.value * self._y.value
-
-    @property
-    def use_linear_relaxation(self):
-        return True
-
-    @use_linear_relaxation.setter
-    def use_linear_relaxation(self, val):
-        if val is not True:
-            raise ValueError('McCormickRelaxation only supports relaxations.')
-
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} {2}*{3}'.format(self._w.name, relational_operator_string, self._x.name, self._y.name)
 
 
 def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH, tol=0):
@@ -158,3 +86,193 @@ def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH,
                 # see the doc string for this method - only adding one over and one under-estimator
                 if xlb != -math.inf and yub != math.inf:
                     b.relaxation.add(w <= x*yub + xlb*y - xlb*yub)
+
+
+def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=RelaxationSide.BOTH):
+    """
+    This function creates piecewise envelopes to relax "w = x*y". Note that the partitioning is done on "x" only.
+    This is the "nf4r" from Gounaris, Misener, and Floudas (2009).
+
+    Parameters
+    ----------
+    b: pyo.ConcreteModel or pyo.Block
+    x: pyomo.core.base.var._GeneralVarData
+        The "x" variable in x*y
+    y: pyomo.core.base.var._GeneralVarData
+        The "y" variable in x*y
+    w: pyomo.core.base.var._GeneralVarData
+        The "w" variable that is replacing x*y
+    x_pts: list of floats
+        A list of floating point numbers to define the points over which the piecewise representation will generated.
+        This list must be ordered, and it is expected that the first point (x_pts[0]) is equal to x.lb and the
+        last point (x_pts[-1]) is equal to x.ub
+    relaxation_side : minlp.minlp_defn.RelaxationSide
+        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+
+    """
+    xlb = x_pts[0]
+    xub = x_pts[-1]
+    ylb, yub = tuple(_get_bnds_list(y))
+
+    check_var_pts(x, x_pts=x_pts)
+    check_var_pts(y)
+
+    if x.is_fixed() and y.is_fixed():
+        b.xy_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * pyo.value(y))
+    elif x.is_fixed():
+        b.x_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * y)
+    elif y.is_fixed():
+        b.y_fixed_eq = pyo.Constraint(expr= w == x * pyo.value(y))
+    elif len(x_pts) == 2:
+        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
+    elif xlb == -math.inf or xub == math.inf or ylb == -math.inf or yub == math.inf:
+        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
+    else:
+        # create the lambda variables (binaries for the pw representation)
+        b.interval_set = pyo.Set(initialize=range(1, len(x_pts)))
+        b.lam = pyo.Var(b.interval_set, within=pyo.Binary)
+
+        # create the delta y variables
+        b.delta_y = pyo.Var(b.interval_set, bounds=(0, None))
+
+        # create the "sos1" constraint
+        b.lam_sos1 = pyo.Constraint(expr=sum(b.lam[n] for n in b.interval_set) == 1.0)
+
+        # create the x interval constraints
+        b.x_interval_lb = pyo.Constraint(expr=sum(x_pts[n - 1] * b.lam[n] for n in b.interval_set) <= x)
+        b.x_interval_ub = pyo.Constraint(expr=x <= sum(x_pts[n] * b.lam[n] for n in b.interval_set))
+
+        # create the y constraints
+        b.y_con = pyo.Constraint(expr=y == ylb + sum(b.delta_y[n] for n in b.interval_set))
+
+        def delta_yn_ub_rule(m, n):
+            return b.delta_y[n] <= (yub - ylb) * b.lam[n]
+
+        b.delta_yn_ub = pyo.Constraint(b.interval_set, rule=delta_yn_ub_rule)
+
+        # create the relaxation constraints
+        if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
+            b.w_lb1 = pyo.Constraint(expr=(w >= yub * x + sum(x_pts[n] * b.delta_y[n] for n in b.interval_set) -
+                                           (yub - ylb) * sum(x_pts[n] * b.lam[n] for n in b.interval_set)))
+            b.w_lb2 = pyo.Constraint(
+                expr=w >= ylb * x + sum(x_pts[n - 1] * b.delta_y[n] for n in b.interval_set))
+
+        if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
+            b.w_ub1 = pyo.Constraint(expr=(w <= yub * x + sum(x_pts[n - 1] * b.delta_y[n] for n in b.interval_set) -
+                                           (yub - ylb) * sum(x_pts[n - 1] * b.lam[n] for n in b.interval_set)))
+            b.w_ub2 = pyo.Constraint(expr=w <= ylb * x + sum(x_pts[n] * b.delta_y[n] for n in b.interval_set))
+
+
+@declare_custom_block(name='PWMcCormickRelaxation')
+class PWMcCormickRelaxationData(BasePWRelaxationData):
+    """
+    A class for managing McCormick relaxations of bilinear terms (aux_var = x1 * x2).
+    """
+
+    def __init__(self, component):
+        BasePWRelaxationData.__init__(self, component)
+        self._x1ref = ComponentWeakRef(None)
+        self._x2ref = ComponentWeakRef(None)
+        self._aux_var_ref = ComponentWeakRef(None)
+        self._f_x_expr = None
+
+    @property
+    def _x1(self):
+        return self._x1ref.get_component()
+
+    @property
+    def _x2(self):
+        return self._x2ref.get_component()
+
+    @property
+    def _aux_var(self):
+        return self._aux_var_ref.get_component()
+
+    def get_rhs_vars(self):
+        return [self._x1, self._x2]
+
+    def get_rhs_expr(self):
+        return self._f_x_expr
+
+    def vars_with_bounds_in_relaxation(self):
+        return [self._x1, self._x2]
+
+    def set_input(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        """
+        Parameters
+        ----------
+        x1 : pyomo.core.base.var._GeneralVarData
+            The "x1" variable in x1*x2
+        x2 : pyomo.core.base.var._GeneralVarData
+            The "x2" variable in x1*x2
+        aux_var : pyomo.core.base.var._GeneralVarData
+            The "aux_var" auxillary variable that is replacing x1*x2
+        relaxation_side : minlp.minlp_defn.RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        """
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        use_linear_relaxation=True, large_eval_tol=math.inf)
+        self._x1ref.set_component(x1)
+        self._x2ref.set_component(x2)
+        self._aux_var_ref.set_component(aux_var)
+        self._partitions[self._x1] = _get_bnds_list(self._x1)
+        self._f_x_expr = x1 * x2
+
+    def build(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+        """
+        Parameters
+        ----------
+        x1 : pyomo.core.base.var._GeneralVarData
+            The "x1" variable in x1*x2
+        x2 : pyomo.core.base.var._GeneralVarData
+            The "x2" variable in x1*x2
+        aux_var : pyomo.core.base.var._GeneralVarData
+            The "aux_var" auxillary variable that is replacing x1*x2
+        relaxation_side : minlp.minlp_defn.RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        """
+        self.set_input(x1=x1, x2=x2, aux_var=aux_var, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers)
+        self.rebuild()
+
+    def _build_relaxation(self):
+        _build_pw_mccormick_relaxation(b=self, x=self._x1, y=self._x2, w=self._aux_var,
+                                       x_pts=self._partitions[self._x1],
+                                       relaxation_side=self.relaxation_side)
+
+    def add_parition_point(self, value=None):
+        """
+        This method adds one point to the partitioning of x1. If value is not
+        specified, a single point will be added to the partitioning of x1 at the current value of x1. If value is
+        specified, then value is added to the partitioning of x1.
+
+        Parameters
+        ----------
+        value: float
+            The point to be added to the partitioning of x1.
+        """
+        self._add_partition_point(self._x1, value)
+
+    def is_rhs_convex(self):
+        """
+        Returns True if linear underestimators do not need binaries. Otherwise, returns False.
+
+        Returns
+        -------
+        bool
+        """
+        return False
+
+    def is_rhs_concave(self):
+        """
+        Returns True if linear overestimators do not need binaries. Otherwise, returns False.
+
+        Returns
+        -------
+        bool
+        """
+        return False
