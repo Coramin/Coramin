@@ -1,16 +1,19 @@
 import numpy as np
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    pass
 import pyomo.environ as pe
 from pyomo.contrib.fbbt.fbbt import fbbt, compute_bounds_on_expr
-import coramin
+from coramin.relaxations.univariate import PWXSquaredRelaxation, PWUnivariateRelaxation, PWCosRelaxation, PWSinRelaxation, PWArctanRelaxation
 
 
 def plot_feasible_region_2d(relaxation, show_plot=True, num_pts=30, tol=1e-4):
-    if not isinstance(relaxation, (coramin.relaxations.PWXSquaredRelaxation,
-                                   coramin.relaxations.PWUnivariateRelaxation,
-                                   coramin.relaxations.PWCosRelaxation,
-                                   coramin.relaxations.PWSinRelaxation,
-                                   coramin.relaxations.PWArctanRelaxation)):
+    if not isinstance(relaxation, (PWXSquaredRelaxation,
+                                   PWUnivariateRelaxation,
+                                   PWCosRelaxation,
+                                   PWSinRelaxation,
+                                   PWArctanRelaxation)):
         raise NotImplementedError('Plotting is not supported for {0}.'.format(type(relaxation)))
 
     x = relaxation.get_rhs_vars()[0]
