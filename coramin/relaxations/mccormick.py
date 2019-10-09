@@ -9,158 +9,156 @@ from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, 
 logger = logging.getLogger(__name__)
 
 
-def _build_mccormick_relaxation(b, x, y, w, relaxation_side=RelaxationSide.BOTH, tol=0):
+def _build_mccormick_relaxation(b, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, tol=0):
     """
-    Construct the McCormick envelopes for w = x*y
+    Construct the McCormick envelopes for aux_var = x1*x2
 
         Underestimators:
-            w >= xL*y + x*yL - xL*yL
-            w >= xU*y + x*yU - xU*yU
+            aux_var >= x1L*x2 + x1*x2L - x1L*x2L
+            aux_var >= x1U*x2 + x1*x2U - x1U*x2U
         Overestimators:
-            w <= xU*y + x*yL - xU*yL
-            w <= x*yU + xL*y - xL*yU
+            aux_var <= x1U*x2 + x1*x2L - x1U*x2L
+            aux_var <= x1*x2U + x1L*x2 - x1L*x2U
 
     Parameters
     ----------
     b : Pyomo Block object
         The block that we want to use for adding any necessary constraints
-    x : Pyomo Var or VarData object
-        The "x" variable in x*y
-    y : Pyomo Var or VarData object
-        The "y" variable in x*y
-    w : Pyomo Var or VarData object
-        The "w" variable that is replacing x*y
+    x1 : Pyomo Var or VarData object
+        The "x1" variable in x1*x2
+    x2 : Pyomo Var or VarData object
+        The "x2" variable in x1*x2
+    aux_var : Pyomo Var or VarData object
+        The "aux_var" variable that is replacing x1*x2
     relaxation_side: RelaxationSide
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
     tol: float
-        When the upper and lower bounds on x/y become too close, numerical issues can arise because both over-estimators
+        When the upper and lower bounds on x1/x2 become too close, numerical issues can arise because both over-estimators
         become similar and both underestimators become similar. To overcome this, when the difference between the
         upper and lower bounds becomes "small enough", we only include one overestimator and one underestimator. If only
         one overestimator and only one underestimator are included, the maximum error in the relaxation is
-        (xU - xL) * (yU - yL). If this product is less than tol, then only one overestimator and only one underestimator
+        (x1U - x1L) * (x2U - x2L). If this product is less than tol, then only one overestimator and only one underestimator
         are included.
 
     Returns
     -------
     N/A
     """
-    # extract the bounds on x and y
-    xlb, xub = tuple(_get_bnds_list(x))
-    ylb, yub = tuple(_get_bnds_list(y))
+    # extract the bounds on x1 and x2
+    x1lb, x1ub = tuple(_get_bnds_list(x1))
+    x2lb, x2ub = tuple(_get_bnds_list(x2))
 
     # perform error checking on the bounds before constructing the McCormick envelope
-    if xub < xlb:
-        e = 'Lower bound is larger than upper bound: {0}, lb: {1}, ub: {2}'.format(x, xlb, xub)
+    if x1ub < x1lb:
+        e = 'Lower bound is larger than upper bound: {0}, lb: {1}, ub: {2}'.format(x1, x1lb, x1ub)
         logger.error(e)
         raise ValueError(e)
-    if yub < ylb:
-        e = 'Lower bound is larger than upper bound: {0}, lb: {1}, ub: {2}'.format(y, ylb, yub)
+    if x2ub < x2lb:
+        e = 'Lower bound is larger than upper bound: {0}, lb: {1}, ub: {2}'.format(x2, x2lb, x2ub)
         logger.error(e)
         raise ValueError(e)
 
     # check for different compbinations of fixed variables
-    if x.is_fixed() and y.is_fixed():
-        # x and y are fixed - don't need a McCormick, but rather an equality
-        b.xy_fixed_eq = pyo.Constraint(expr= w == pyo.value(x)*pyo.value(y))
-    elif x.is_fixed():
-        b.x_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * y)
-    elif y.is_fixed():
-        b.y_fixed_eq = pyo.Constraint(expr= w == x * pyo.value(y))
+    if x1.is_fixed() and x2.is_fixed():
+        # x1 and x2 are fixed - don't need a McCormick, but rather an equality
+        b.x1x2_fixed_eq = pyo.Constraint(expr= aux_var == pyo.value(x1)*pyo.value(x2))
+    elif x1.is_fixed():
+        b.x1_fixed_eq = pyo.Constraint(expr= aux_var == pyo.value(x1) * x2)
+    elif x2.is_fixed():
+        b.x2_fixed_eq = pyo.Constraint(expr= aux_var == x1 * pyo.value(x2))
     else:
         # bounds are OK and neither of the variables are fixed
         # build the standard envelopes
         b.relaxation = pyo.ConstraintList()
         assert (relaxation_side in RelaxationSide)
         if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
-            if xlb != -math.inf and ylb != -math.inf:
-                b.relaxation.add(w >= xlb*y + x*ylb - xlb*ylb)
-            if (xub - xlb) * (yub - ylb) > tol or xlb == -math.inf or ylb == -math.inf:
+            if x1lb != -math.inf and x2lb != -math.inf:
+                b.relaxation.add(aux_var >= x1lb*x2 + x1*x2lb - x1lb*x2lb)
+            if (x1ub - x1lb) * (x2ub - x2lb) > tol or x1lb == -math.inf or x2lb == -math.inf:
                 # see the doc string for this method - only adding one over and one under-estimator
-                if xub != math.inf and yub != math.inf:
-                    b.relaxation.add(w >= xub*y + x*yub - xub*yub)
+                if x1ub != math.inf and x2ub != math.inf:
+                    b.relaxation.add(aux_var >= x1ub*x2 + x1*x2ub - x1ub*x2ub)
 
         if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
-            if xub != math.inf and ylb != -math.inf:
-                b.relaxation.add(w <= xub*y + x*ylb - xub*ylb)
-            if (xub - xlb) * (yub - ylb) > tol or xub == math.inf or ylb == -math.inf:
+            if x1ub != math.inf and x2lb != -math.inf:
+                b.relaxation.add(aux_var <= x1ub*x2 + x1*x2lb - x1ub*x2lb)
+            if (x1ub - x1lb) * (x2ub - x2lb) > tol or x1ub == math.inf or x2lb == -math.inf:
                 # see the doc string for this method - only adding one over and one under-estimator
-                if xlb != -math.inf and yub != math.inf:
-                    b.relaxation.add(w <= x*yub + xlb*y - xlb*yub)
+                if x1lb != -math.inf and x2ub != math.inf:
+                    b.relaxation.add(aux_var <= x1*x2ub + x1lb*x2 - x1lb*x2ub)
 
 
-def _build_pw_mccormick_relaxation(b, x, y, w, x_pts, relaxation_side=RelaxationSide.BOTH):
+def _build_pw_mccormick_relaxation(b, x1, x2, aux_var, x1_pts, relaxation_side=RelaxationSide.BOTH):
     """
-    This function creates piecewise envelopes to relax "w = x*y". Note that the partitioning is done on "x" only.
+    This function creates piecewise envelopes to relax "aux_var = x1*x2". Note that the partitioning is done on "x1" only.
     This is the "nf4r" from Gounaris, Misener, and Floudas (2009).
 
     Parameters
     ----------
     b: pyo.ConcreteModel or pyo.Block
-    x: pyomo.core.base.var._GeneralVarData
-        The "x" variable in x*y
-    y: pyomo.core.base.var._GeneralVarData
-        The "y" variable in x*y
-    w: pyomo.core.base.var._GeneralVarData
-        The "w" variable that is replacing x*y
-    x_pts: list of floats
+    x1: pyomo.core.base.var._GeneralVarData
+        The "x1" variable in x1*x2
+    x2: pyomo.core.base.var._GeneralVarData
+        The "x2" variable in x1*x2
+    aux_var: pyomo.core.base.var._GeneralVarData
+        The "aux_var" variable that is replacing x*y
+    x1_pts: list of floats
         A list of floating point numbers to define the points over which the piecewise representation will generated.
         This list must be ordered, and it is expected that the first point (x_pts[0]) is equal to x.lb and the
         last point (x_pts[-1]) is equal to x.ub
     relaxation_side : minlp.minlp_defn.RelaxationSide
         Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-
     """
-    xlb = x_pts[0]
-    xub = x_pts[-1]
-    ylb, yub = tuple(_get_bnds_list(y))
+    x1_lb = x1_pts[0]
+    x1_ub = x1_pts[-1]
+    x2_lb, x2_ub = tuple(_get_bnds_list(x2))
 
-    check_var_pts(x, x_pts=x_pts)
-    check_var_pts(y)
+    check_var_pts(x1, x_pts=x1_pts)
+    check_var_pts(x2)
 
-    if x.is_fixed() and y.is_fixed():
-        b.xy_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * pyo.value(y))
-    elif x.is_fixed():
-        b.x_fixed_eq = pyo.Constraint(expr= w == pyo.value(x) * y)
-    elif y.is_fixed():
-        b.y_fixed_eq = pyo.Constraint(expr= w == x * pyo.value(y))
-    elif len(x_pts) == 2:
-        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
-    elif xlb == -math.inf or xub == math.inf or ylb == -math.inf or yub == math.inf:
-        _build_mccormick_relaxation(b, x=x, y=y, w=w, relaxation_side=relaxation_side)
+    if x1.is_fixed() and x2.is_fixed():
+        b.x1_x2_fixed_eq = pyo.Constraint(expr= aux_var == pyo.value(x1) * pyo.value(x2))
+    elif x1.is_fixed():
+        b.x1_fixed_eq = pyo.Constraint(expr= aux_var == pyo.value(x1) * x2)
+    elif x2.is_fixed():
+        b.x2_fixed_eq = pyo.Constraint(expr= aux_var == x1 * pyo.value(x2))
+    elif len(x1_pts) == 2:
+        _build_mccormick_relaxation(b, x1=x1, x2=x2, aux_var=aux_var, relaxation_side=relaxation_side)
+    elif x1_lb == -math.inf or x1_ub == math.inf or x2_lb == -math.inf or x2_ub == math.inf:
+        _build_mccormick_relaxation(b, x1=x1, x2=x2, aux_var=aux_var, relaxation_side=relaxation_side)
     else:
-        # create the lambda variables (binaries for the pw representation)
-        b.interval_set = pyo.Set(initialize=range(1, len(x_pts)))
-        b.lam = pyo.Var(b.interval_set, within=pyo.Binary)
+        # create the lambda_ variables (binaries for the pw representation)
+        b.interval_set = pyo.Set(initialize=range(1, len(x1_pts)))
+        b.lambda_ = pyo.Var(b.interval_set, within=pyo.Binary)
 
-        # create the delta y variables
-        b.delta_y = pyo.Var(b.interval_set, bounds=(0, None))
+        # create the delta x2 variables
+        b.delta_x2 = pyo.Var(b.interval_set, bounds=(0, None))
 
         # create the "sos1" constraint
-        b.lam_sos1 = pyo.Constraint(expr=sum(b.lam[n] for n in b.interval_set) == 1.0)
+        b.lambda_sos1 = pyo.Constraint(expr=sum(b.lambda_[n] for n in b.interval_set) == 1.0)
 
-        # create the x interval constraints
-        b.x_interval_lb = pyo.Constraint(expr=sum(x_pts[n - 1] * b.lam[n] for n in b.interval_set) <= x)
-        b.x_interval_ub = pyo.Constraint(expr=x <= sum(x_pts[n] * b.lam[n] for n in b.interval_set))
+        # create the x1 interval constraints
+        b.x1_interval_lb = pyo.Constraint(expr=sum(x1_pts[n - 1] * b.lambda_[n] for n in b.interval_set) <= x1)
+        b.x1_interval_ub = pyo.Constraint(expr=x1 <= sum(x1_pts[n] * b.lambda_[n] for n in b.interval_set))
 
-        # create the y constraints
-        b.y_con = pyo.Constraint(expr=y == ylb + sum(b.delta_y[n] for n in b.interval_set))
+        # create the x2 constraints
+        b.x2_con = pyo.Constraint(expr=x2 == x2_lb + sum(b.delta_x2[n] for n in b.interval_set))
 
-        def delta_yn_ub_rule(m, n):
-            return b.delta_y[n] <= (yub - ylb) * b.lam[n]
+        def delta_x2n_ub_rule(m, n):
+            return b.delta_x2[n] <= (x2_ub - x2_lb) * b.lambda_[n]
 
-        b.delta_yn_ub = pyo.Constraint(b.interval_set, rule=delta_yn_ub_rule)
+        b.delta_x2n_ub = pyo.Constraint(b.interval_set, rule=delta_x2n_ub_rule)
 
         # create the relaxation constraints
         if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
-            b.w_lb1 = pyo.Constraint(expr=(w >= yub * x + sum(x_pts[n] * b.delta_y[n] for n in b.interval_set) -
-                                           (yub - ylb) * sum(x_pts[n] * b.lam[n] for n in b.interval_set)))
-            b.w_lb2 = pyo.Constraint(
-                expr=w >= ylb * x + sum(x_pts[n - 1] * b.delta_y[n] for n in b.interval_set))
+            b.aux_var_lb1 = pyo.Constraint(expr=(aux_var >= x2_ub * x1 + sum(x1_pts[n] * b.delta_x2[n] for n in b.interval_set) -
+                                                 (x2_ub - x2_lb) * sum(x1_pts[n] * b.lambda_[n] for n in b.interval_set)))
+            b.aux_var_lb2 = pyo.Constraint(expr=aux_var >= x2_lb * x1 + sum(x1_pts[n - 1] * b.delta_x2[n] for n in b.interval_set))
 
         if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
-            b.w_ub1 = pyo.Constraint(expr=(w <= yub * x + sum(x_pts[n - 1] * b.delta_y[n] for n in b.interval_set) -
-                                           (yub - ylb) * sum(x_pts[n - 1] * b.lam[n] for n in b.interval_set)))
-            b.w_ub2 = pyo.Constraint(expr=w <= ylb * x + sum(x_pts[n] * b.delta_y[n] for n in b.interval_set))
+            b.aux_var_ub1 = pyo.Constraint(expr=(aux_var <= x2_ub * x1 + sum(x1_pts[n - 1] * b.delta_x2[n] for n in b.interval_set) -
+                                                 (x2_ub - x2_lb) * sum(x1_pts[n - 1] * b.lambda_[n] for n in b.interval_set)))
+            b.aux_var_ub2 = pyo.Constraint(expr=aux_var <= x2_lb * x1 + sum(x1_pts[n] * b.delta_x2[n] for n in b.interval_set))
 
 
 @declare_custom_block(name='PWMcCormickRelaxation')
@@ -240,8 +238,8 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         self.rebuild()
 
     def _build_relaxation(self):
-        _build_pw_mccormick_relaxation(b=self, x=self._x1, y=self._x2, w=self._aux_var,
-                                       x_pts=self._partitions[self._x1],
+        _build_pw_mccormick_relaxation(b=self, x1=self._x1, x2=self._x2, aux_var=self._aux_var,
+                                       x1_pts=self._partitions[self._x1],
                                        relaxation_side=self.relaxation_side)
 
     def add_parition_point(self, value=None):
