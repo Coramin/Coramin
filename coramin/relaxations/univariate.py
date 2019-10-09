@@ -123,7 +123,7 @@ def _func_wrapper(obj):
 
 
 def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=FunctionShape.UNKNOWN,
-                             relaxation_side=RelaxationSide.BOTH, large_eval_tol=1e8):
+                             relaxation_side=RelaxationSide.BOTH, large_eval_tol=math.inf):
     """
     This function creates piecewise envelopes to relax "w=f(x)" where f(x) is univariate and either convex over the
     entire domain of x or concave over the entire domain of x.
@@ -152,16 +152,28 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol, 
         at a point in x_pts, then that point is skipped.
     """
+    if shape not in {FunctionShape.CONCAVE, FunctionShape.CONVEX}:
+        e = 'pw_univariate_relaxation: shape must be either FunctionShape.CONCAVE or FunctionShape.CONVEX'
+        logger.error(e)
+        raise ValueError(e)
+
+    if relaxation_side is RelaxationSide.BOTH:
+        if shape is FunctionShape.CONVEX:
+            logger.warning('pw_univariate_relaxation does not handle the underestimators for convex functions')
+        elif shape is FunctionShape.CONCAVE:
+            logger.warning('pw_univariate_relaxation does not handle the overestimators for concave functions')
+    elif relaxation_side is RelaxationSide.UNDER:
+        if shape is FunctionShape.CONVEX:
+            logger.warning('pw_univariate_relaxation does not handle the underestimators for convex functions')
+    else:
+        if shape is FunctionShape.CONCAVE:
+            logger.warning('pw_univariate_relaxation does not handle the overestimators for concave functions')
+
     _eval = _FxExpr(expr=f_x_expr, x=x)
     xlb = x_pts[0]
     xub = x_pts[-1]
 
     check_var_pts(x, x_pts)
-
-    if shape not in {FunctionShape.CONCAVE, FunctionShape.CONVEX}:
-        e = 'pw_univariate_relaxation: shape must be either FunctionShape.CONCAVE or FunctionShape.CONVEX'
-        logger.error(e)
-        raise ValueError(e)
 
     if x.is_fixed():
         b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
@@ -170,7 +182,6 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
     else:
         # Do the non-convex piecewise portion if shape=CONCAVE and relaxation_side=Under/BOTH
         # or if shape=CONVEX and relaxation_side=Over/BOTH
-
         pw_constr_type = None
         if shape == FunctionShape.CONVEX and relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             pw_constr_type = 'UB'
@@ -185,11 +196,11 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                 for _pt in x_pts:
                     try:
                         f = _eval(_pt)
-                        if f < -large_eval_tol:
-                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_pt), str(x), str(f_x_expr)))
+                        if f <= -large_eval_tol:
+                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than {3}'.format(str(_pt), str(x), str(f_x_expr), -large_eval_tol))
                             continue
-                        if f > large_eval_tol:
-                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_pt), str(x), str(f_x_expr)))
+                        if f >= large_eval_tol:
+                            logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than {3}'.format(str(_pt), str(x), str(f_x_expr), large_eval_tol))
                             continue
                         tmp_pts.append(_pt)
                     except (ZeroDivisionError, ValueError, OverflowError):
@@ -201,168 +212,6 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
                                                            pw_constr_type=pw_constr_type,
                                                            f_rule=_func_wrapper(_eval)
                                                            )
-
-        non_pw_constr_type = None
-        if shape == FunctionShape.CONVEX and relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
-            non_pw_constr_type = 'LB'
-        if shape == FunctionShape.CONCAVE and relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
-            non_pw_constr_type = 'UB'
-
-        x_pts = _copy_v_pts_without_inf(x_pts)
-
-        if non_pw_constr_type is not None:
-            # Build the non-piecewise side of the envelope
-            b.linear_under_over = pyo.ConstraintList()
-            for _x in x_pts:
-                try:
-                    w_at_pt = _eval(_x)
-                    m_at_pt = _eval.deriv(_x)
-                    if w_at_pt < -large_eval_tol:
-                        logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
-                        continue
-                    if w_at_pt > large_eval_tol:
-                        logger.warning('Skipping pt {0} for var {1} because {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
-                        continue
-                    if m_at_pt < -large_eval_tol:
-                        logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is less than -1e8'.format(str(_x), str(x), str(f_x_expr)))
-                        continue
-                    if m_at_pt > large_eval_tol:
-                        logger.warning('Skipping pt {0} for var {1} because the derivative of {2} evaluated at {0} is greater than 1e8'.format(str(_x), str(x), str(f_x_expr)))
-                        continue
-                    b_at_pt = w_at_pt - m_at_pt * _x
-                    if non_pw_constr_type == 'LB':
-                        b.linear_under_over.add(w >= m_at_pt * x + b_at_pt)
-                    else:
-                        assert non_pw_constr_type == 'UB'
-                        b.linear_under_over.add(w <= m_at_pt * x + b_at_pt)
-                except (ZeroDivisionError, ValueError, OverflowError):
-                    pass
-
-
-def pw_x_squared_relaxation(b, x, w, x_pts, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-                            use_nonlinear_underestimator=False):
-    """
-    This function creates piecewise envelopes that provide a linear relaxation of "w=x**2".
-
-    Parameters
-    ----------
-    b: pyo.Block
-    x: pyo.Var
-        The "x" variable in x**2
-    w: pyo.Var
-        The "w" variable that is replacing x**2
-    x_pts: list of float
-        A list of floating point numbers to define the points over which the piecewise representation will generated.
-        This list must be ordered, and it is expected that the first point (x_pts[0]) is equal to x.lb and the last
-        point (x_pts[-1]) is equal to x.ub
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the
-        Piecewise component). Use help(Piecewise) to learn more.
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    use_nonlinear_underestimator: bool
-        If False, then piecewise linear underestimators will be built.
-        If True, then the nonlinear underestimators will be built ( w >= x**2 )
-    """
-    # Need to consider the following situations
-    #   side    use_nonlinear      pw_under    pw_over     nonlinear_under  side_for_pw     use_nonlin
-    #   OVER        False           no          yes         no                  OVER            False
-    #   OVER        True            no          no          no              (EXCEPTION)     (EXCEPTION)
-    #   UNDER       False           yes         no          no                  UNDER           False
-    #   UNDER       True            no          no          yes                 None            True
-    #   BOTH        False           yes         yes         no                  BOTH            False
-    #   BOTH        True            no          yes         yes                 OVER            True
-
-    # exception for OVER/True
-    # change UNDER/True to None/True
-    # change BOTH/True  to OVER/True
-
-    check_var_pts(x, x_pts)
-
-    if use_nonlinear_underestimator and (relaxation_side == RelaxationSide.OVER):
-        e = 'pw_x_squared_relaxation: if use_nonlinear_underestimator is True, then ' + \
-                         'relaxation_side needs to be FunctionShape.UNDER or FunctionShape.BOTH'
-        logger.error(e)
-        raise ValueError(e)
-
-    if x.is_fixed():
-        b.x_fixed_con = pyo.Constraint(expr= w == pyo.value(x)**2)
-    else:
-        pw_side = relaxation_side
-        if pw_side == RelaxationSide.UNDER and use_nonlinear_underestimator is True:
-            pw_side = None
-        if pw_side == RelaxationSide.BOTH and use_nonlinear_underestimator is True:
-            pw_side = RelaxationSide.OVER
-
-        if pw_side is not None:
-            b.pw_under_over = pyo.Block()
-            pw_univariate_relaxation(b.pw_under_over, x, w, x_pts, f_x_expr=x**2, pw_repn=pw_repn, shape=FunctionShape.CONVEX, relaxation_side=pw_side)
-
-        if use_nonlinear_underestimator:
-            b.underestimator = pyo.Constraint(expr= w >= x**2)
-
-
-def pw_cos_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_repn='INC',
-                      use_quadratic_overestimator=False):
-    """
-    This function creates a block with the constraints necessary to relax w = cos(x)
-    for -pi/2 <= x <= pi/2.
-
-    Parameters
-    ----------
-    b: pyo.Block
-    x: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The "x" variable in cos(x). The lower bound on x must greater than or equal to
-        -pi/2 and the upper bound on x must be less than or equal to pi/2.
-    w: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing cos(x)
-    x_pts: list of float
-        A list of floating point numbers to define the points over which the piecewise
-        representation will be generated. This list must be ordered, and it is expected
-        that the first point (x_pts[0]) is equal to x.lb and the last point (x_pts[-1])
-        is equal to x.ub
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    pw_repn: str
-        This must be one of the valid strings for the peicewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
-    use_quadratic_overestimator: bool
-        If False, then linear overestimators will be built. If True, then a
-        quadratic overestimator will be used. Note that a piecewise version of the
-        quadratic overestimator is not supported.
-    """
-    _eval = _FxExpr(expr=pyo.cos(x), x=x)
-
-    check_var_pts(x, x_pts)
-
-    xlb = x_pts[0]
-    xub = x_pts[-1]
-
-    if x.is_fixed():
-        b.x_fixed_con = pyo.Constraint(expr=w == _eval(x.value))
-        return
-
-    if xlb < -np.pi / 2.0:
-        return
-
-    if xub > np.pi / 2.0:
-        return
-
-    if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
-        if use_quadratic_overestimator:
-            ub = max([abs(xlb), abs(xub)])
-            b.overestimator = pyo.Constraint(expr=w <= 1 - ((1-_eval(ub))/ub**2)*x**2)
-        else:
-            b.overestimator = pyo.Block()
-            pw_univariate_relaxation(b=b.overestimator, x=x, w=w, x_pts=x_pts, f_x_expr=pyo.cos(x),
-                                     shape=FunctionShape.CONCAVE, pw_repn=pw_repn,
-                                     relaxation_side=RelaxationSide.OVER)
-
-    if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
-        b.underestimator = pyo.Block()
-        pw_univariate_relaxation(b=b.underestimator, x=x, w=w, x_pts=x_pts, f_x_expr=pyo.cos(x),
-                                 shape=FunctionShape.CONCAVE, pw_repn=pw_repn,
-                                 relaxation_side=RelaxationSide.UNDER)
 
 
 def pw_sin_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_repn='INC', safety_tol=1e-10):
@@ -655,155 +504,11 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
     return x_pts
 
 
-@declare_custom_block(name='PWXSquaredRelaxation')
-class PWXSquaredRelaxationData(BasePWRelaxationData):
-    """
-    A helper class for building and modifying piecewise relaxations of aux_var = x**2.
-
-    Parameters
-    ----------
-    x: pyomo.core.base.var._GeneralVarData
-        The "x" variable in w=x**2.
-    aux_var: pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing x**2
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    use_linear_relaxation: bool
-        If True, then linear underestimators will be built.
-        If False, then  quadratic underestimators will be built ( w >= x**2 )
-    """
-
-    def __init__(self, component):
-        BasePWRelaxationData.__init__(self, component)
-        self._xref = ComponentWeakRef(None)
-        self._aux_var_ref = ComponentWeakRef(None)
-        self._pw_repn = 'INC'
-        self._use_linear_relaxation = True
-
-    @property
-    def _x(self):
-        return self._xref.get_component()
-
-    @property
-    def _aux_var(self):
-        return self._aux_var_ref.get_component()
-
-    def get_rhs_vars(self):
-        return [self._x]
-
-    def get_rhs_expr(self):
-        return self._x**2
-
-    def vars_with_bounds_in_relaxation(self):
-        v = []
-        if self._relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
-            v.append(self._x)
-        return v
-
-    def set_input(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self._xref.set_component(x)
-        self._aux_var_ref.set_component(aux_var)
-        self._pw_repn = pw_repn
-        self.use_linear_relaxation = use_linear_relaxation
-        self._partitions[self._x] = _get_bnds_list(self._x)
-
-    def build(self, x, aux_var, pw_repn='INC', use_linear_relaxation=True, relaxation_side=RelaxationSide.BOTH,
-              persistent_solvers=None):
-        self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
-                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self.rebuild()
-
-    def _build_relaxation(self):
-        # The base class takes care of the underestimators
-        if self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
-            pw_x_squared_relaxation(self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
-                                    pw_repn=self._pw_repn, relaxation_side=RelaxationSide.OVER,
-                                    use_nonlinear_underestimator=(not self._use_linear_relaxation))
-
-    def add_parition_point(self, value=None):
-        """
-        This method adds one point to the partitioning of x. If value is not
-        specified, a single point will be added to the partitioning of x at the current value of x. If value is
-        specified, then value is added to the partitioning of x.
-
-        Parameters
-        ----------
-        value: float
-            The point to be added to the partitioning of x.
-        """
-        self._add_point(self._x, value)
-
-    def _get_violation(self):
-        """
-        Get the signed constraint violation.
-
-        Returns
-        -------
-        float
-        """
-        return self._w.value - self._x.value ** 2
-
-    def is_rhs_convex(self):
-        """
-        Returns True if linear underestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
-        """
-        return True
-
-    def is_rhs_concave(self):
-        """
-        Returns True if linear overestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
-        """
-        return False
-
-    @property
-    def use_linear_relaxation(self):
-        return self._use_linear_relaxation
-
-    @use_linear_relaxation.setter
-    def use_linear_relaxation(self, val):
-        self._use_linear_relaxation = val
-
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} {2}**2'.format(self._w.name, relational_operator_string, self._x.name)
-
-
 @declare_custom_block(name='PWUnivariateRelaxation')
 class PWUnivariateRelaxationData(BasePWRelaxationData):
     """
-    A helper class for building and modifying piecewise relaxations of w = f(x) where f(x) is either convex
+    A helper class for building and modifying piecewise relaxations of aux_var = f(x) where f(x) is either convex
     or concave.
-
-    Parameters
-    ----------
-    x: pyomo.core.base.var._GeneralVarData
-        The "x" variable in w=f(x).
-    w: pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing f(x)
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
-    relaxation_side: RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    shape: FunctionShape
-        Options are FunctionShape.CONVEX and FunctionShape.CONCAVE
-    f_x_expr: pyomo expression
-        The pyomo expression representing f(x)
-    large_eval_tol: float
-        To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol, 
-        at a point in x_pts, then that point is skipped.
     """
 
     def __init__(self, component):
@@ -813,7 +518,6 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         self._pw_repn = 'INC'
         self._function_shape = FunctionShape.UNKNOWN
         self._f_x_expr = None
-        self.large_eval_tol = None
 
     @property
     def _x(self):
@@ -831,45 +535,93 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
 
     def vars_with_bounds_in_relaxation(self):
         v = []
-        if self._relaxation_side is RelaxationSide.BOTH:
+        if self.relaxation_side is RelaxationSide.BOTH:
             v.append(self._x)
-        elif self._relaxation_side is RelaxationSide.UNDER and self._function_shape is FunctionShape.CONCAVE:
+        elif self.relaxation_side is RelaxationSide.UNDER and self.is_rhs_concave():
             v.append(self._x)
-        elif self._relaxation_side is RelaxationSide.OVER and self._function_shape is FunctionShape.CONVEX:
+        elif self.relaxation_side is RelaxationSide.OVER and self.is_rhs_convex():
             v.append(self._x)
         return v
 
     def set_input(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-                  persistent_solvers=None, large_eval_tol=1e8):
-
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+                  persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        shape: FunctionShape
+            Options are FunctionShape.CONVEX and FunctionShape.CONCAVE
+        f_x_expr: pyomo expression
+            The pyomo expression representing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        use_linear_relaxation=use_linear_relaxation, large_eval_tol=large_eval_tol)
         self._pw_repn = pw_repn
         self._function_shape = shape
         self._f_x_expr = f_x_expr
-        self.large_eval_tol = large_eval_tol
 
         self._xref.set_component(x)
         self._aux_var_ref.set_component(aux_var)
-        self._partitions[self._x] = _get_bnds_list(self._x)
+        bnds_list = _get_bnds_list(self._x)
+        self._partitions[self._x] = bnds_list
 
     def build(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
-              persistent_solvers=None, large_eval_tol=1e8):
+              persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        shape: FunctionShape
+            Options are FunctionShape.CONVEX and FunctionShape.CONCAVE
+        f_x_expr: pyomo expression
+            The pyomo expression representing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
         self.set_input(x=x, aux_var=aux_var, shape=shape, f_x_expr=f_x_expr, pw_repn=pw_repn,
                        relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                       large_eval_tol=large_eval_tol)
+                       large_eval_tol=large_eval_tol, use_linear_relaxation=True)
         self.rebuild()
 
     def _build_relaxation(self):
         if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
-                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=self._function_shape,
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONVEX,
                                      relaxation_side=RelaxationSide.OVER, large_eval_tol=self.large_eval_tol)
         elif self.is_rhs_concave() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
             pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
-                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=self._function_shape,
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
                                      relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_eval_tol)
 
-    def add_point(self, value=None):
+    def add_parition_point(self, value=None):
         """
         This method adds one point to the partitioning of x. If value is not
         specified, a single point will be added to the partitioning of x at the current value of x. If value is
@@ -880,17 +632,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         value: float
             The point to be added to the partitioning of x.
         """
-        self._add_point(self._x, value)
-
-    def _get_violation(self):
-        """
-        Get the signed constraint violation.
-
-        Returns
-        -------
-        float
-        """
-        return self._w.value - pyo.value(self._f_x_expr)
+        self._add_partition_point(self._x, value)
 
     def is_rhs_convex(self):
         """
@@ -914,225 +656,210 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
 
     @property
     def use_linear_relaxation(self):
-        return True
-
-    @use_linear_relaxation.setter
-    def use_linear_relaxation(self, val):
-        if val is not True:
-            raise ValueError('PWUnivariateRelaxation only supports linear relaxations.')
-
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} {2}'.format(self._w.name, relational_operator_string, str(self._f_x_expr))
-
-
-@declare_custom_block(name='PWCosRelaxation')
-class PWCosRelaxationData(BasePWRelaxationData):
-    """
-    A helper class for building and modifying piecewise relaxations of w = cos(x) for -pi/2 <= x <= pi/2.
-
-    Parameters
-    ----------
-    x: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The "x" variable in w=cos(x).
-    w: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing cos(x)
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    use_linear_relaxation: bool
-        If False, then linear overestimators will be built. If True, then a
-        quadratic overestimator will be used. Note that a piecewise version of the
-        quadratic overestimator is not supported.
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
-    """
-
-    def __init__(self, component):
-        BasePWRelaxationData.__init__(self, component)
-        self._xref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
-        self._use_linear_relaxation = True
-        self._pw_repn = 'INC'
-
-    @property
-    def _x(self):
-        return self._xref.get_component()
-
-    @property
-    def _w(self):
-        return self._wref.get_component()
-
-    def vars_with_bounds_in_relaxation(self):
-        v = []
-        if self._relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER} or (not self._use_linear_relaxation):
-            v.append(self._x)
-        return v
-
-    def set_input(self, x, w, pw_repn='INC', use_linear_relaxation=True,
-                  relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self._pw_repn = pw_repn
-        self._use_linear_relaxation = use_linear_relaxation
-
-        self._xref.set_component(x)
-        self._wref.set_component(w)
-        self._partitions[self._x] = _get_bnds_list(self._x)
-
-    def build(self, x, w, pw_repn='INC', use_linear_relaxation=True,
-              relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self.set_input(x=x, w=w, pw_repn=pw_repn, use_linear_relaxation=use_linear_relaxation,
-                       relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
-        self.rebuild()
-
-    def _build_relaxation(self):
-        pw_cos_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
-                          relaxation_side=self._relaxation_side, pw_repn=self._pw_repn,
-                          use_quadratic_overestimator=(not self._use_linear_relaxation))
-
-    def add_point(self, value=None):
-        """
-        This method adds one point to the partitioning of x. If value is not
-        specified, a single point will be added to the partitioning of x at the current value of x. If value is
-        specified, then value is added to the partitioning of x.
-
-        Parameters
-        ----------
-        value: float
-            The point to be added to the partitioning of x.
-        """
-        self._add_point(self._x, value)
-
-    def _get_violation(self):
-        """
-        Get the signed constraint violation.
-
-        Returns
-        -------
-        float
-        """
-        return self._w.value - float(np.cos(pyo.value(self._x)))
-
-    def is_convex(self):
-        """
-        Returns True if linear underestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
-        """
-        return False
-
-    def is_concave(self):
-        """
-        Returns True if linear overestimators do not need binaries. Otherwise, returns False.
-
-        Returns
-        -------
-        bool
-        """
-        return True
-
-    @property
-    def use_linear_relaxation(self):
         return self._use_linear_relaxation
 
     @use_linear_relaxation.setter
     def use_linear_relaxation(self, val):
         self._use_linear_relaxation = val
 
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} cos({2})'.format(self._w.name, relational_operator_string, self._x.name)
+    def clean_oa_points(self):
+        new_oa_points = list()
+        lb, ub = tuple(_get_bnds_list(self._x))
+        for pts in self._oa_points:
+            pt = pts[self._x]
+            if pt > lb and pt < ub:
+                new_oa_points.append(pts)
+        if lb > -math.inf:
+            new_oa_points.append(pe.ComponentMap([(self._x, lb)]))
+        if ub < math.inf:
+            new_oa_points.append(pe.ComponentMap([(self._x, ub)]))
+        self._oa_points = new_oa_points
+
+
+@declare_custom_block(name='PWXSquaredRelaxation')
+class PWXSquaredRelaxationData(PWUnivariateRelaxationData):
+    """
+    A helper class for building and modifying piecewise relaxations of aux_var = x**2.
+    """
+    def set_input(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
+        super(PWXSquaredRelaxationData, self).set_input(x=x, aux_var=aux_var, shape=FunctionShape.CONVEX,
+                                                        f_x_expr=x**2, pw_repn=pw_repn,
+                                                        relaxation_side=relaxation_side,
+                                                        persistent_solvers=persistent_solvers,
+                                                        large_eval_tol=large_eval_tol,
+                                                        use_linear_relaxation=use_linear_relaxation)
+
+    def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
+        super(PWXSquaredRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONVEX,
+                                                    f_x_expr=x**2, pw_repn=pw_repn,
+                                                    relaxation_side=relaxation_side,
+                                                    persistent_solvers=persistent_solvers,
+                                                    large_eval_tol=large_eval_tol,
+                                                    use_linear_relaxation=use_linear_relaxation)
+
+
+@declare_custom_block(name='PWCosRelaxation')
+class PWCosRelaxationData(PWUnivariateRelaxationData):
+    """
+    A helper class for building and modifying piecewise relaxations of w = cos(x) for -pi/2 <= x <= pi/2.
+    """
+    def set_input(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+                  persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
+        super(PWXSquaredRelaxationData, self).set_input(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
+                                                        f_x_expr=pe.cos(x), pw_repn=pw_repn,
+                                                        relaxation_side=relaxation_side,
+                                                        persistent_solvers=persistent_solvers,
+                                                        large_eval_tol=large_eval_tol,
+                                                        use_linear_relaxation=use_linear_relaxation)
+
+    def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
+              persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
+        """
+        Parameters
+        ----------
+        x: pyomo.core.base.var._GeneralVarData
+            The "x" variable in aux_var = f(x).
+        aux_var: pyomo.core.base.var._GeneralVarData
+            The auxillary variable replacing f(x)
+        pw_repn: str
+            This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
+            component). Use help(Piecewise) to learn more.
+        relaxation_side: RelaxationSide
+            Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
+        persistent_solvers: list
+            List of persistent solvers that should be updated when the relaxation changes
+        large_eval_tol: float
+            To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol,
+            at a point in x_pts, then that point is skipped.
+        use_linear_relaxation: bool
+            Specifies whether a linear or nonlinear relaxation should be used
+        """
+        super(PWXSquaredRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
+                                                    f_x_expr=pe.cos(x), pw_repn=pw_repn,
+                                                    relaxation_side=relaxation_side,
+                                                    persistent_solvers=persistent_solvers,
+                                                    large_eval_tol=large_eval_tol,
+                                                    use_linear_relaxation=use_linear_relaxation)
+
+    def rebuild(self, build_nonlinear_constraint=False):
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb >= -math.pi/2 and ub <= math.pi/2:
+            super(PWCosRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+
+    def is_rhs_convex(self):
+        return False
+
+    def is_rhs_concave(self):
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb > -math.pi/2 and ub < math.pi/2:
+            return True
+        else:
+            return False
 
 
 @declare_custom_block(name='PWSinRelaxation')
-class PWSinRelaxationData(BasePWRelaxationData):
+class PWSinRelaxationData(PWUnivariateRelaxationData):
     """
     A helper class for building and modifying piecewise relaxations of w = sin(x) for -pi/2 <= x <= pi/2.
-
-    Parameters
-    ----------
-    x: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The "x" variable in w=cos(x).
-    w: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing cos(x)
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
     """
 
-    def __init__(self, component):
-        BasePWRelaxationData.__init__(self, component)
-        self._xref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
-        self._pw_repn = 'INC'
-
-    @property
-    def _x(self):
-        return self._xref.get_component()
-
-    @property
-    def _w(self):
-        return self._wref.get_component()
-
-    def vars_with_bounds_in_relaxation(self):
-        v = []
-        xlb = pyo.value(self._x.lb)
-        xub = pyo.value(self._x.ub)
-        if self._relaxation_side is RelaxationSide.BOTH:
-            v.append(self._x)
-        elif xlb < 0 and xub > 0:
-            v.append(self._x)
-        elif xlb >= 0:
-            if self._relaxation_side is RelaxationSide.UNDER:
-                v.append(self._x)
-        else:
-            assert xub <= 0
-            if self._relaxation_side is RelaxationSide.OVER:
-                v.append(self._x)
-        return v
-
-    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def set_input(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None,
+                  use_linear_relaxation=True):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        use_linear_relaxation=use_linear_relaxation, large_eval_tol=math.inf)
         self._pw_repn = pw_repn
         self._xref.set_component(x)
-        self._wref.set_component(w)
+        self._aux_var_ref.set_component(aux_var)
         self._partitions[self._x] = _get_bnds_list(self._x)
+        self._f_x_expr = pe.sin(x)
 
-    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self.set_input(x=x, w=w, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None,
+              use_linear_relaxation=True):
+        self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers, use_linear_relaxation=use_linear_relaxation)
         self.rebuild()
 
+    def rebuild(self, build_nonlinear_constraint=False):
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb >= -math.pi / 2 and ub <= math.pi / 2:
+            super(PWSinRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+
     def _build_relaxation(self):
-        pw_sin_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
-                          relaxation_side=self._relaxation_side, pw_repn=self._pw_repn)
+        if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONVEX,
+                                     relaxation_side=RelaxationSide.OVER, large_eval_tol=self.large_eval_tol)
+        elif self.is_rhs_concave() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
+                                     relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_eval_tol)
+        if (not self.is_rhs_convex()) and (not self.is_rhs_concave()):
+            pw_sin_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                              relaxation_side=self.relaxation_side, pw_repn=self._pw_repn)
 
-    def add_point(self, value=None):
-        """
-        This method adds one point to the partitioning of x. If value is not
-        specified, a single point will be added to the partitioning of x at the current value of x. If value is
-        specified, then value is added to the partitioning of x.
-
-        Parameters
-        ----------
-        value: float
-            The point to be added to the partitioning of x.
-        """
-        self._add_point(self._x, value)
-
-    def _get_violation(self):
-        """
-        Get the signed constraint violation.
-
-        Returns
-        -------
-        float
-        """
-        return self._w.value - float(np.sin(pyo.value(self._x)))
-
-    def is_convex(self):
+    def is_rhs_convex(self):
         """
         Returns True if linear underestimators do not need binaries. Otherwise, returns False.
 
@@ -1140,9 +867,12 @@ class PWSinRelaxationData(BasePWRelaxationData):
         -------
         bool
         """
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb >= -math.pi / 2 and ub <= 0:
+            return True
         return False
 
-    def is_concave(self):
+    def is_rhs_concave(self):
         """
         Returns True if linear overestimators do not need binaries. Otherwise, returns False.
 
@@ -1150,109 +880,48 @@ class PWSinRelaxationData(BasePWRelaxationData):
         -------
         bool
         """
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb >= 0 and ub <= math.pi / 2:
+            return True
         return False
-
-    @property
-    def use_linear_relaxation(self):
-        return True
-
-    @use_linear_relaxation.setter
-    def use_linear_relaxation(self, val):
-        if val is not True:
-            raise ValueError('PWSinRelaxation only supports linear relaxations.')
-
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} sin({2})'.format(self._w.name, relational_operator_string, self._x.name)
 
 
 @declare_custom_block(name='PWArctanRelaxation')
-class PWArctanRelaxationData(BasePWRelaxationData):
+class PWArctanRelaxationData(PWUnivariateRelaxationData):
     """
     A helper class for building and modifying piecewise relaxations of w = arctan(x).
-
-    Parameters
-    ----------
-    x: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The "x" variable in w=arctan(x).
-    w: pyomo.core.base.var.SimpleVar or pyomo.core.base.var._GeneralVarData
-        The auxillary variable replacing arctan(x)
-    relaxation_side: minlp.RelaxationSide
-        Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-    pw_repn: str
-        This must be one of the valid strings for the piecewise representation to use (directly from the Piecewise
-        component). Use help(Piecewise) to learn more.
     """
 
-    def __init__(self, component):
-        BasePWRelaxationData.__init__(self, component)
-        self._xref = ComponentWeakRef(None)
-        self._wref = ComponentWeakRef(None)
-        self._pw_repn = 'INC'
-
-    @property
-    def _x(self):
-        return self._xref.get_component()
-
-    @property
-    def _w(self):
-        return self._wref.get_component()
-
-    def vars_with_bounds_in_relaxation(self):
-        v = []
-        xlb = pyo.value(self._x.lb)
-        xub = pyo.value(self._x.ub)
-        if self._relaxation_side is RelaxationSide.BOTH:
-            v.append(self._x)
-        elif xlb < 0 and xub > 0:
-            v.append(self._x)
-        elif xlb >= 0:
-            if self._relaxation_side is RelaxationSide.UNDER:
-                v.append(self._x)
-        else:
-            assert xub <= 0
-            if self._relaxation_side is RelaxationSide.OVER:
-                v.append(self._x)
-        return v
-
-    def set_input(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def set_input(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None,
+                  use_linear_relaxation=True):
+        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
+                        use_linear_relaxation=use_linear_relaxation, large_eval_tol=math.inf)
         self._pw_repn = pw_repn
         self._xref.set_component(x)
-        self._wref.set_component(w)
+        self._aux_var_ref.set_component(aux_var)
         self._partitions[self._x] = _get_bnds_list(self._x)
+        self._f_x_expr = pe.atan(x)
 
-    def build(self, x, w, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
-        self.set_input(x=x, w=x, pw_repn=pw_repn, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers)
+    def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH, persistent_solvers=None,
+              use_linear_relaxation=True):
+        self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers, use_linear_relaxation=use_linear_relaxation)
         self.rebuild()
 
     def _build_relaxation(self):
-        pw_arctan_relaxation(b=self, x=self._x, w=self._w, x_pts=self._partitions[self._x],
-                             relaxation_side=self._relaxation_side, pw_repn=self._pw_repn)
+        if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONVEX,
+                                     relaxation_side=RelaxationSide.OVER, large_eval_tol=self.large_eval_tol)
+        elif self.is_rhs_concave() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
+            pw_univariate_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
+                                     relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_eval_tol)
+        if (not self.is_rhs_convex()) and (not self.is_rhs_concave()):
+            pw_arctan_relaxation(b=self, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                 relaxation_side=self.relaxation_side, pw_repn=self._pw_repn)
 
-    def add_point(self, value=None):
-        """
-        This method adds one point to the partitioning of x. If value is not
-        specified, a single point will be added to the partitioning of x at the current value of x. If value is
-        specified, then value is added to the partitioning of x.
-
-        Parameters
-        ----------
-        value: float
-            The point to be added to the partitioning of x.
-        """
-        self._add_point(self._x, value)
-
-    def _get_violation(self):
-        """
-        Get the signed constraint violation.
-
-        Returns
-        -------
-        float
-        """
-        return self._w.value - float(np.arctan(pyo.value(self._x)))
-
-    def is_convex(self):
+    def is_rhs_convex(self):
         """
         Returns True if linear underestimators do not need binaries. Otherwise, returns False.
 
@@ -1260,9 +929,12 @@ class PWArctanRelaxationData(BasePWRelaxationData):
         -------
         bool
         """
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if ub <= 0:
+            return True
         return False
 
-    def is_concave(self):
+    def is_rhs_concave(self):
         """
         Returns True if linear overestimators do not need binaries. Otherwise, returns False.
 
@@ -1270,16 +942,7 @@ class PWArctanRelaxationData(BasePWRelaxationData):
         -------
         bool
         """
+        lb, ub = tuple(_get_bnds_list(self._x))
+        if lb >= 0:
+            return True
         return False
-
-    @property
-    def use_linear_relaxation(self):
-        return True
-
-    @use_linear_relaxation.setter
-    def use_linear_relaxation(self, val):
-        if val is not True:
-            raise ValueError('PWArctanRelaxation only supports linear relaxations.')
-
-    def _get_pprint_string(self, relational_operator_string):
-        return 'Relaxation for {0} {1} arctan({2})'.format(self._w.name, relational_operator_string, self._x.name)
