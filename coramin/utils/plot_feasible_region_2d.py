@@ -5,7 +5,7 @@ from pyomo.contrib.fbbt.fbbt import fbbt, compute_bounds_on_expr
 import coramin
 
 
-def plot_feasible_region_2d(relaxation, show_plot=True, num_pts=30, tol=1e-5):
+def plot_feasible_region_2d(relaxation, show_plot=True, num_pts=30, tol=1e-4):
     if not isinstance(relaxation, (coramin.relaxations.PWXSquaredRelaxation,
                                    coramin.relaxations.PWUnivariateRelaxation,
                                    coramin.relaxations.PWCosRelaxation,
@@ -43,7 +43,11 @@ def plot_feasible_region_2d(relaxation, show_plot=True, num_pts=30, tol=1e-5):
     x_list = np.linspace(xlb, xub, num_pts)
     w_list = np.linspace(wlb, wub, num_pts)
 
-    w_true = x_list**2
+    w_true = list()
+    rhs_expr = relaxation.get_rhs_expr()
+    for _x in x_list:
+        x.value = float(_x)
+        w_true.append(pe.value(rhs_expr))
     plt.plot(x_list, w_true)
 
     x_list = [float(i) for i in x_list]
@@ -54,6 +58,8 @@ def plot_feasible_region_2d(relaxation, show_plot=True, num_pts=30, tol=1e-5):
     m.w = w
     m.b = relaxation
     opt = pe.SolverFactory('gurobi_persistent')
+    opt.options['BarQCPConvTol'] = 1e-8
+    opt.options['FeasibilityTol'] = 1e-8
     opt.set_instance(m)
 
     feasible_x = list()
