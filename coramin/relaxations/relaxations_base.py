@@ -353,22 +353,25 @@ class BaseRelaxationData(_BlockData):
         if rhs_val >= self.large_eval_tol or rhs_val < - self.large_eval_tol:
             pass
         else:
-            if self.is_rhs_convex():
-                if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
-                    if check_violation:
-                        viol = self.get_aux_var().value - rhs_val
-                        if viol < -feasibility_tol:
+            try:
+                if self.is_rhs_convex():
+                    if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
+                        if check_violation:
+                            viol = self.get_aux_var().value - rhs_val
+                            if viol < -feasibility_tol:
+                                cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
+                        else:
                             cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
-                    else:
-                        cut_expr = self.get_aux_var() >= taylor_series_expansion(self.get_rhs_expr())
-            elif self.is_rhs_concave():
-                if self.relaxation_side == RelaxationSide.OVER or self.relaxation_side == RelaxationSide.BOTH:
-                    if check_violation:
-                        viol = self.get_aux_var().value - rhs_val
-                        if viol > feasibility_tol:
+                elif self.is_rhs_concave():
+                    if self.relaxation_side == RelaxationSide.OVER or self.relaxation_side == RelaxationSide.BOTH:
+                        if check_violation:
+                            viol = self.get_aux_var().value - rhs_val
+                            if viol > feasibility_tol:
+                                cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
+                        else:
                             cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
-                    else:
-                        cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
+            except (OverflowError, ZeroDivisionError, ValueError):
+                pass
         if cut_expr is not None:
             if self._cuts is None:
                 del self._cuts
