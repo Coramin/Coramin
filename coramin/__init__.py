@@ -5,3 +5,4 @@ if sys.version_info.major != 3 or sys.version_info.minor < 6:
 from coramin import utils
 from coramin import domain_reduction
 from coramin import relaxations
+from coramin import algorithms
