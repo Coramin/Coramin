@@ -738,6 +738,7 @@ class PWXSquaredRelaxationData(PWUnivariateRelaxationData):
                        persistent_solvers=persistent_solvers,
                        large_eval_tol=large_eval_tol,
                        use_linear_relaxation=use_linear_relaxation)
+        self.rebuild()
 
 
 @declare_custom_block(name='PWCosRelaxation')

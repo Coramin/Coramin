@@ -144,7 +144,6 @@ class BaseRelaxationData(_BlockData):
         else:
             self._build_relaxation()
             if self.use_linear_relaxation:
-                self._cuts = pe.ConstraintList()
                 val_mngr = _ValueManager()
                 val_mngr.save_values(self.get_rhs_vars())
                 for pt in self._oa_points:
@@ -373,6 +372,8 @@ class BaseRelaxationData(_BlockData):
             except (OverflowError, ZeroDivisionError, ValueError):
                 pass
         if cut_expr is not None:
+            if not hasattr(self, '_cuts'):
+                self._cuts = None
             if self._cuts is None:
                 del self._cuts
                 self._allow_changes = True
