@@ -14,10 +14,10 @@ class TestUnivariateExp(unittest.TestCase):
 
         model.obj = pe.Objective(expr=model.y, sense=pe.maximize)
         model.pw_exp = coramin.relaxations.PWUnivariateRelaxation()
-        model.pw_exp.build(x=model.x, w=model.y, pw_repn='INC', shape=coramin.utils.FunctionShape.CONVEX,
+        model.pw_exp.build(x=model.x, aux_var=model.y, pw_repn='INC', shape=coramin.utils.FunctionShape.CONVEX,
                            relaxation_side=coramin.utils.RelaxationSide.BOTH, f_x_expr=pe.exp(model.x))
-        model.pw_exp.add_point(-0.5)
-        model.pw_exp.add_point(0.5)
+        model.pw_exp.add_partition_point(-0.5)
+        model.pw_exp.add_partition_point(0.5)
         model.pw_exp.rebuild()
 
     @classmethod
@@ -56,7 +56,7 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.z = pe.Var(bounds=(0, None))
         m.c = coramin.relaxations.PWUnivariateRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=pe.exp(m.x))
         m.c.rebuild()
         m.c2 = pe.ConstraintList()
@@ -79,10 +79,10 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.z = pe.Var(bounds=(0, None))
         m.c = coramin.relaxations.PWUnivariateRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=pe.exp(m.x))
-        m.c.add_point(-0.25)
-        m.c.add_point(0.25)
+        m.c.add_partition_point(-0.25)
+        m.c.add_partition_point(0.25)
         m.c.rebuild()
         m.c2 = pe.ConstraintList()
         m.c2.add(m.z >= m.y - m.p)
@@ -104,7 +104,7 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.z = pe.Var(bounds=(0, None))
         m.c = coramin.relaxations.PWUnivariateRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONCAVE, f_x_expr=pe.log(m.x))
         m.c.rebuild()
         m.c2 = pe.ConstraintList()
@@ -127,10 +127,10 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.z = pe.Var(bounds=(0, None))
         m.c = coramin.relaxations.PWUnivariateRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONCAVE, f_x_expr=pe.log(m.x))
-        m.c.add_point(0.9)
-        m.c.add_point(1.1)
+        m.c.add_partition_point(0.9)
+        m.c.add_partition_point(1.1)
         m.c.rebuild()
         m.c2 = pe.ConstraintList()
         m.c2.add(m.z >= m.y - m.p)
@@ -151,7 +151,7 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.x.fix(0)
         m.c = coramin.relaxations.PWUnivariateRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=pe.exp(m.x))
         self.assertEqual(id(m.c.x_fixed_con.body), id(m.y))
         self.assertEqual(m.c.x_fixed_con.lower, 1.0)
@@ -164,7 +164,7 @@ class TestFeasibility(unittest.TestCase):
         m.y = pe.Var()
         m.z = pe.Var(bounds=(0, None))
         m.c = coramin.relaxations.PWXSquaredRelaxation()
-        m.c.build(x=m.x, w=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH)
+        m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH)
         m.c2 = pe.ConstraintList()
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)

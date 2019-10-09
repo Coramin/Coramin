@@ -621,7 +621,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
                                      f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
                                      relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_eval_tol)
 
-    def add_parition_point(self, value=None):
+    def add_partition_point(self, value=None):
         """
         This method adds one point to the partitioning of x. If value is not
         specified, a single point will be added to the partitioning of x at the current value of x. If value is
