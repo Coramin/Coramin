@@ -732,12 +732,12 @@ class PWXSquaredRelaxationData(PWUnivariateRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(PWXSquaredRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONVEX,
-                                                    f_x_expr=x**2, pw_repn=pw_repn,
-                                                    relaxation_side=relaxation_side,
-                                                    persistent_solvers=persistent_solvers,
-                                                    large_eval_tol=large_eval_tol,
-                                                    use_linear_relaxation=use_linear_relaxation)
+        self.set_input(x=x, aux_var=aux_var,
+                       pw_repn=pw_repn,
+                       relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers,
+                       large_eval_tol=large_eval_tol,
+                       use_linear_relaxation=use_linear_relaxation)
 
 
 @declare_custom_block(name='PWCosRelaxation')

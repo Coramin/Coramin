@@ -50,7 +50,7 @@ class BaseRelaxationData(_BlockData):
         self._oa_points = list()  # List of ComponentMap. Each entry in the list specifies a point at which an outer
                                   # approximation cut should be built for convex/concave constraints.
         self._saved_oa_points = list()
-        self._cuts = pe.ConstraintList()
+        self._cuts = None
         self._use_linear_relaxation = True
         self.large_eval_tol = math.inf
 
@@ -370,6 +370,11 @@ class BaseRelaxationData(_BlockData):
                     else:
                         cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
         if cut_expr is not None:
+            if self._cuts is None:
+                del self._cuts
+                self._allow_changes = True
+                self._cuts = pe.ConstraintList()
+                self._allow_changes = False
             new_con = self._cuts.add(cut_expr)
             if add_cut_to_persistent_solvers:
                 for i in self._persistent_solvers:
