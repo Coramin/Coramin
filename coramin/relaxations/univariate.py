@@ -808,6 +808,8 @@ class PWCosRelaxationData(PWUnivariateRelaxationData):
         lb, ub = tuple(_get_bnds_list(self._x))
         if lb >= -math.pi/2 and ub <= math.pi/2:
             super(PWCosRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+        else:
+            self.remove_relaxation()
 
     def is_rhs_convex(self):
         return False
@@ -846,6 +848,8 @@ class PWSinRelaxationData(PWUnivariateRelaxationData):
         lb, ub = tuple(_get_bnds_list(self._x))
         if lb >= -math.pi / 2 and ub <= math.pi / 2:
             super(PWSinRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+        else:
+            self.remove_relaxation()
 
     def _build_relaxation(self):
         if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
