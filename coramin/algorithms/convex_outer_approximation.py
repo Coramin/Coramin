@@ -51,7 +51,7 @@ class ConvexOuterApproximationSolver(PersistentSolver):
 
     def solve(self, *args, **kwargs):
         t0 = time.time()
-        logger.info('{0:<10}{1:<12}{2:<12}{3:<12}'.format('Iter', 'objective', 'max_viol', 'time'))
+        logger.info('{0:<10}{1:<12}{2:<12}{3:<12}{4:<12}'.format('Iter', 'objective', 'max_viol', 'time', '# cuts'))
 
         obj = None
         for _obj in self._pyomo_model.component_data_objects(pe.Objective, descend_into=True, active=True, sort=True):
@@ -105,7 +105,7 @@ class ConvexOuterApproximationSolver(PersistentSolver):
                 final_res.problem.lower_bound = None
                 final_res.problem.upper_bound = obj_val
             elapsed_time = time.time() - t0
-            logger.info('{0:<10d}{1:<12.3e}{2:<12.3e}{3:<12.3e}'.format(_iter, obj_val, max_viol, elapsed_time))
+            logger.info('{0:<10d}{1:<12.3e}{2:<12.3e}{3:<12.3e}{4:<12d}'.format(_iter, obj_val, max_viol, elapsed_time, num_cuts_added))
 
             if num_cuts_added == 0:
                 final_res.solver.termination_condition = pe.TerminationCondition.optimal
