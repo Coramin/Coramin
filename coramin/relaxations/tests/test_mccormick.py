@@ -20,8 +20,8 @@ class TestMcCormick(unittest.TestCase):
 
         model.obj = pyo.Objective(expr=-model.w - 2 * model.x)
         model.con = pyo.Constraint(expr=model.w <= 12)
-        model.mc = coramin.relaxations.McCormickRelaxation()
-        model.mc.build(x=model.x, y=model.y, w=model.w)
+        model.mc = coramin.relaxations.PWMcCormickRelaxation()
+        model.mc.build(x1=model.x, x2=model.y, aux_var=model.w)
 
         linsolver = pyo.SolverFactory('glpk')
         linsolver.solve(model)
@@ -37,8 +37,8 @@ class TestMcCormick(unittest.TestCase):
         model.obj = pyo.Objective(expr=-model.w - 2 * model.x)
         model.con = pyo.Constraint(expr=model.w <= 12)
         def mc_rule(b):
-            b.build(x=model.x, y=model.y, w=model.w)
-        model.mc = coramin.relaxations.McCormickRelaxation(rule=mc_rule)
+            b.build(x1=model.x, x2=model.y, aux_var=model.w)
+        model.mc = coramin.relaxations.PWMcCormickRelaxation(rule=mc_rule)
 
         linsolver = pyo.SolverFactory('glpk')
         linsolver.solve(model)
@@ -56,8 +56,8 @@ class TestMcCormick(unittest.TestCase):
 
         def mc_rule(b):
             m = b.parent_block()
-            b.build(x=m.x, y=m.y, w=m.w)
-        model.mc = coramin.relaxations.McCormickRelaxation(rule=mc_rule)
+            b.build(x1=m.x, x2=m.y, aux_var=m.w)
+        model.mc = coramin.relaxations.PWMcCormickRelaxation(rule=mc_rule)
 
         linsolver = pyo.SolverFactory('glpk', tee=True)
         linsolver.solve(model)
@@ -75,8 +75,8 @@ class TestMcCormick(unittest.TestCase):
 
         def mc_rule(b):
             m = b.parent_block()
-            b.build(x=m.x, y=m.y, w=m.w, relaxation_side=coramin.utils.RelaxationSide.OVER)
-        model.mc = coramin.relaxations.McCormickRelaxation(rule=mc_rule)
+            b.build(x1=m.x, x2=m.y, aux_var=m.w, relaxation_side=coramin.utils.RelaxationSide.OVER)
+        model.mc = coramin.relaxations.PWMcCormickRelaxation(rule=mc_rule)
 
         linsolver = pyo.SolverFactory('glpk', tee=True)
         linsolver.solve(model)
@@ -94,8 +94,8 @@ class TestMcCormick(unittest.TestCase):
 
         def mc_rule(b):
             m = b.parent_block()
-            b.build(x=m.x, y=m.y, w=m.w, relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        model.mc = coramin.relaxations.McCormickRelaxation(rule=mc_rule)
+            b.build(x1=m.x, x2=m.y, aux_var=m.w, relaxation_side=coramin.utils.RelaxationSide.UNDER)
+        model.mc = coramin.relaxations.PWMcCormickRelaxation(rule=mc_rule)
 
         linsolver = pyo.SolverFactory('glpk', tee=True)
         linsolver.solve(model)

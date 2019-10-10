@@ -20,7 +20,7 @@ class TestAlphaBBRelaxation(unittest.TestCase):
 
         model.obj = pe.Objective(expr=model.w)
         model.abb = AlphaBBRelaxation()
-        model.abb.build(w=model.w, xs=[model.x, model.y], f_x_expr=model.f_x)
+        model.abb.build(aux_var=model.w, f_x_expr=model.f_x)
 
     def test_nonlinear(self):
         model = self.model.clone()
@@ -34,7 +34,7 @@ class TestAlphaBBRelaxation(unittest.TestCase):
                 model.x.value = x_v
                 model.y.value = y_v
                 f_x_v = pe.value(model.f_x)
-                abb_v = pe.value(model.abb.con.body)
+                abb_v = pe.value(model.abb.nonlinear_underestimator.body)
                 self.assertAlmostEqual(f_x_v, abb_v)
 
         solver = pe.SolverFactory('ipopt')
@@ -49,7 +49,7 @@ class TestAlphaBBRelaxation(unittest.TestCase):
         model.y.value = 0.0
 
         for _ in range(5):
-            model.abb.add_point()
+            model.abb.add_oa_point()
             model.abb.rebuild()
             solver = pe.SolverFactory('glpk')
             solver.solve(model)

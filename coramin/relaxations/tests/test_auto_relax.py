@@ -4,6 +4,7 @@ import unittest
 from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 from pyomo.core.expr.visitor import identify_variables
 import math
+from pyomo.core.kernel.component_set import ComponentSet
 
 
 class TestAutoRelax(unittest.TestCase):
@@ -32,9 +33,9 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.x), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertIn(id(rel.y), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertIn(rel.y, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
 
     def test_product2(self):
         m = pe.ConcreteModel()
@@ -71,9 +72,9 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.x), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertIn(id(rel.y), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertIn(rel.y, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
 
     def test_quadratic(self):
         m = pe.ConcreteModel()
@@ -111,8 +112,8 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWXSquaredRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_cubic_convex(self):
@@ -151,10 +152,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_cubic_concave(self):
@@ -193,10 +194,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertFalse(rel.relaxations.rel0.is_convex())
-        self.assertTrue(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertFalse(rel.relaxations.rel0.is_rhs_convex())
+        self.assertTrue(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_cubic(self):
@@ -246,14 +247,14 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWXSquaredRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
 
         self.assertTrue(hasattr(rel.relaxations, 'rel1'))
         self.assertTrue(isinstance(rel.relaxations.rel1, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.x), {id(rel.relaxations.rel1._x), id(rel.relaxations.rel1._y)})
-        self.assertIn(id(rel.aux_vars[1]), {id(rel.relaxations.rel1._x), id(rel.relaxations.rel1._y)})
-        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel1.get_rhs_vars()))
+        self.assertIn(rel.aux_vars[1], ComponentSet(rel.relaxations.rel1.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1.get_aux_var()))
 
     def test_pow_fractional1(self):
         m = pe.ConcreteModel()
@@ -292,10 +293,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertFalse(rel.relaxations.rel0.is_convex())
-        self.assertTrue(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertFalse(rel.relaxations.rel0.is_rhs_convex())
+        self.assertTrue(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_fractional2(self):
@@ -335,10 +336,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_neg_even1(self):
@@ -378,10 +379,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_neg_even2(self):
@@ -421,10 +422,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_neg_odd1(self):
@@ -464,10 +465,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_neg_odd2(self):
@@ -507,10 +508,10 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertFalse(rel.relaxations.rel0.is_convex())
-        self.assertTrue(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertFalse(rel.relaxations.rel0.is_rhs_convex())
+        self.assertTrue(rel.relaxations.rel0.is_rhs_concave())
         self.assertFalse(hasattr(rel.relaxations, 'rel1'))
 
     def test_pow_neg(self):
@@ -563,16 +564,16 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWXSquaredRelaxation))
-        self.assertEqual(id(rel.x), id(rel.relaxations.rel0._x))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
-        self.assertTrue(rel.relaxations.rel0.is_convex())
-        self.assertFalse(rel.relaxations.rel0.is_concave())
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel0.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel0.is_rhs_concave())
 
         self.assertTrue(hasattr(rel.relaxations, 'rel1'))
         self.assertTrue(isinstance(rel.relaxations.rel1, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.aux_vars[1]), {id(rel.relaxations.rel1._x), id(rel.relaxations.rel1._y)})
-        self.assertIn(id(rel.aux_vars[2]), {id(rel.relaxations.rel1._x), id(rel.relaxations.rel1._y)})
-        self.assertEqual(id(rel.aux_vars[3]), id(rel.relaxations.rel1._w))
+        self.assertIn(rel.aux_vars[1], ComponentSet(rel.relaxations.rel1.get_rhs_vars()))
+        self.assertIn(rel.aux_vars[2], ComponentSet(rel.relaxations.rel1.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[3]), id(rel.relaxations.rel1.get_aux_var()))
 
         self.assertFalse(hasattr(rel.relaxations, 'rel2'))
 
@@ -615,16 +616,16 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.x), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertIn(id(rel.y), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertIn(rel.y, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
 
         self.assertTrue(hasattr(rel.relaxations, 'rel1'))
         self.assertTrue(isinstance(rel.relaxations.rel1, coramin.relaxations.PWUnivariateRelaxation))
         self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel1._x))
-        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1._w))
-        self.assertTrue(rel.relaxations.rel1.is_convex())
-        self.assertFalse(rel.relaxations.rel1.is_concave())
+        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1.get_aux_var()))
+        self.assertTrue(rel.relaxations.rel1.is_rhs_convex())
+        self.assertFalse(rel.relaxations.rel1.is_rhs_concave())
 
         self.assertFalse(hasattr(rel.relaxations, 'rel2'))
 
@@ -667,15 +668,15 @@ class TestAutoRelax(unittest.TestCase):
         self.assertTrue(hasattr(rel, 'relaxations'))
         self.assertTrue(hasattr(rel.relaxations, 'rel0'))
         self.assertTrue(isinstance(rel.relaxations.rel0, coramin.relaxations.PWMcCormickRelaxation))
-        self.assertIn(id(rel.x), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertIn(id(rel.y), {id(rel.relaxations.rel0._x), id(rel.relaxations.rel0._y)})
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0._w))
+        self.assertIn(rel.x, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertIn(rel.y, ComponentSet(rel.relaxations.rel0.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel0.get_aux_var()))
 
         self.assertTrue(hasattr(rel.relaxations, 'rel1'))
         self.assertTrue(isinstance(rel.relaxations.rel1, coramin.relaxations.PWUnivariateRelaxation))
-        self.assertEqual(id(rel.aux_vars[1]), id(rel.relaxations.rel1._x))
-        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1._w))
-        self.assertFalse(rel.relaxations.rel1.is_convex())
-        self.assertTrue(rel.relaxations.rel1.is_concave())
+        self.assertIn(rel.aux_vars[1], ComponentSet(rel.relaxations.rel1.get_rhs_vars()))
+        self.assertEqual(id(rel.aux_vars[2]), id(rel.relaxations.rel1.get_aux_var()))
+        self.assertFalse(rel.relaxations.rel1.is_rhs_convex())
+        self.assertTrue(rel.relaxations.rel1.is_rhs_concave())
 
         self.assertFalse(hasattr(rel.relaxations, 'rel2'))
