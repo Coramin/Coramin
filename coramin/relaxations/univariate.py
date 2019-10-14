@@ -768,12 +768,12 @@ class PWCosRelaxationData(PWUnivariateRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(PWXSquaredRelaxationData, self).set_input(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
-                                                        f_x_expr=pe.cos(x), pw_repn=pw_repn,
-                                                        relaxation_side=relaxation_side,
-                                                        persistent_solvers=persistent_solvers,
-                                                        large_eval_tol=large_eval_tol,
-                                                        use_linear_relaxation=use_linear_relaxation)
+        super(PWCosRelaxationData, self).set_input(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
+                                                   f_x_expr=pe.cos(x), pw_repn=pw_repn,
+                                                   relaxation_side=relaxation_side,
+                                                   persistent_solvers=persistent_solvers,
+                                                   large_eval_tol=large_eval_tol,
+                                                   use_linear_relaxation=use_linear_relaxation)
 
     def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
               persistent_solvers=None, large_eval_tol=math.inf, use_linear_relaxation=True):
@@ -797,12 +797,12 @@ class PWCosRelaxationData(PWUnivariateRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(PWXSquaredRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
-                                                    f_x_expr=pe.cos(x), pw_repn=pw_repn,
-                                                    relaxation_side=relaxation_side,
-                                                    persistent_solvers=persistent_solvers,
-                                                    large_eval_tol=large_eval_tol,
-                                                    use_linear_relaxation=use_linear_relaxation)
+        super(PWCosRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
+                                               f_x_expr=pe.cos(x), pw_repn=pw_repn,
+                                               relaxation_side=relaxation_side,
+                                               persistent_solvers=persistent_solvers,
+                                               large_eval_tol=large_eval_tol,
+                                               use_linear_relaxation=use_linear_relaxation)
 
     def rebuild(self, build_nonlinear_constraint=False):
         lb, ub = tuple(_get_bnds_list(self._x))
