@@ -301,7 +301,8 @@ def _build_vardatalist(model, varlist=None):
     return corrected_vardatalist
 
 
-def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False):
+def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
+                 direction='both'):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -320,6 +321,8 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     update_bounds: bool
         If True, then the variable bounds will be updated
     with_progress_bar: bool
+    direction: str
+        Options are 'both', 'lbs', or 'ubs'
 
     Returns
     -------
@@ -339,8 +342,24 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
 
     exc = None
     try:
-        local_lower_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='lb', with_progress_bar=with_progress_bar)
-        local_upper_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='ub', with_progress_bar=with_progress_bar)
+        if direction in {'both', 'lbs'}:
+            local_lower_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='lb', with_progress_bar=with_progress_bar)
+        else:
+            local_lower_bounds = list()
+            for v in local_vardata_list:
+                if v.lb is None:
+                    local_lower_bounds.append(np.nan)
+                else:
+                    local_lower_bounds.append(pyo.value(v.lb))
+        if direction in {'both', 'ubs'}:
+            local_upper_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='ub', with_progress_bar=with_progress_bar)
+        else:
+            local_upper_bounds = list()
+            for v in local_vardata_list:
+                if v.ub is None:
+                    local_upper_bounds.append(np.nan)
+                else:
+                    local_upper_bounds.append(pyo.value(v.ub))
         status = 1
         msg = None
     except Exception as err:
