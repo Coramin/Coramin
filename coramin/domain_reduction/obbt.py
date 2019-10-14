@@ -17,7 +17,7 @@ from pyomo.core.kernel.objective import minimize, maximize
 import logging
 import traceback
 import numpy as np
-from coramin.algorithms.convex_outer_approximation import ECPBounder
+from coramin.algorithms.ecp_bounder import ECPBounder
 try:
     import coramin.utils.mpi_utils as mpiu
     mpi_available = True
