@@ -4,23 +4,36 @@ from coramin.relaxations.relaxations_base import BaseRelaxationData, BaseRelaxat
 import pyomo.environ as pe
 import time
 from pyomo.opt.results.results_ import SolverResults
+from pyomo.common.config import ConfigBlock, ConfigValue, NonNegativeInt, NonNegativeFloat, In
 
 
 import logging
 logger = logging.getLogger(__name__)
 
 
-class ConvexOuterApproximationSolver(PersistentSolver):
+class ECPBounder(PersistentSolver):
+    """
+    A solver designed for use inside of OBBT. This solver is a persistent solver for efficient changes to the
+    objective. Additionally, it provides a mechanism for refining convex nonlinear constraints during OBBT.
+    """
     def __init__(self, subproblem_solver='gurobi_persistent'):
         self._subproblem_solver = pe.SolverFactory(subproblem_solver)
         if not isinstance(self._subproblem_solver, PersistentSolver):
             raise ValueError('subproblem_solver must be a persistent solver')
         self._relaxations = ComponentSet()
         self._relaxations_not_tracking_solver = ComponentSet()
-        self.feasibility_tol = 1e-6
+        self._relaxations_with_added_cuts = ComponentSet()
         self._pyomo_model = None
-        self.max_iter = 30
-        self.keep_cuts = False
+
+        self.options = ConfigBlock()
+        self.options.declare('feasibility_tol', ConfigValue(default=1e-6, domain=NonNegativeFloat,
+                                                            doc='Tolerance below which cuts will not be added'))
+        self.options.declare('max_iter', ConfigValue(default=30, domain=NonNegativeInt,
+                                                     doc='Maximum number of iterations'))
+        self.options.declare('keep_cuts', ConfigValue(default=False, domain=In([True, False]),
+                                                      doc='Whether or not to keep the cuts generated after the solve'))
+
+        self.subproblem_solver_options = ConfigBlock(implicit=True)
 
     def set_instance(self, model, **kwargs):
         self._pyomo_model = model
@@ -50,9 +63,12 @@ class ConvexOuterApproximationSolver(PersistentSolver):
     def update_var(self, var):
         self._subproblem_solver.update_var(var)
 
-    def solve(self, *args, **kwargs):
+    def solve(self, **kwargs):
         t0 = time.time()
         logger.info('{0:<10}{1:<12}{2:<12}{3:<12}{4:<12}'.format('Iter', 'objective', 'max_viol', 'time', '# cuts'))
+
+        options = self.options(kwargs.pop('options', dict()))
+        subproblem_solver_options = self.subproblem_solver_options(kwargs.pop('subproblem_solver_options', dict()))
 
         obj = None
         for _obj in self._pyomo_model.component_data_objects(pe.Objective, descend_into=True, active=True, sort=True):
@@ -66,6 +82,7 @@ class ConvexOuterApproximationSolver(PersistentSolver):
 
         self._relaxations = ComponentSet()
         self._relaxations_not_tracking_solver = ComponentSet()
+        self._relaxations_with_added_cuts = ComponentSet()
         for b in self._pyomo_model.component_data_objects(pe.Block, descend_into=True, active=True, sort=True):
             if isinstance(b, (BaseRelaxationData, BaseRelaxation)):
                 self._relaxations.add(b)
@@ -73,8 +90,8 @@ class ConvexOuterApproximationSolver(PersistentSolver):
                     b.add_persistent_solver(self)
                     self._relaxations_not_tracking_solver.add(b)
 
-        for _iter in range(self.max_iter):
-            res = self._subproblem_solver.solve(save_results=False)
+        for _iter in range(options.max_iter):
+            res = self._subproblem_solver.solve(save_results=False, options=subproblem_solver_options)
             if res.solver.termination_condition != pe.TerminationCondition.optimal:
                 final_res.solver.termination_condition = pe.TerminationCondition.other
                 final_res.solver.status = pe.SolverStatus.aborted
@@ -91,8 +108,9 @@ class ConvexOuterApproximationSolver(PersistentSolver):
                 if viol is not None:
                     if viol > max_viol:
                         max_viol = viol
-                    if viol > self.feasibility_tol:
-                        b.add_cut(keep_cut=self.keep_cuts)
+                    if viol > options.feasibility_tol:
+                        b.add_cut(keep_cut=options.keep_cuts)
+                        self._relaxations_with_added_cuts.add(b)
                         num_cuts_added += 1
 
             if obj.sense == pe.minimize:
@@ -113,9 +131,13 @@ class ConvexOuterApproximationSolver(PersistentSolver):
                 final_res.solver.status = pe.SolverStatus.ok
                 break
 
-            if _iter == self.max_iter - 1:
+            if _iter == options.max_iter - 1:
                 final_res.solver.termination_condition = pe.TerminationCondition.maxIterations
                 final_res.solver.status = pe.SolverStatus.aborted
+
+        if not options.keep_cuts:
+            for b in self._relaxations_with_added_cuts:
+                b.rebuild()
 
         for b in self._relaxations_not_tracking_solver:
             b.remove_persistent_solver(self)
