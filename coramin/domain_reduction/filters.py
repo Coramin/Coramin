@@ -1,7 +1,15 @@
 from pyomo.core.kernel.component_set import ComponentSet
+from coramin.domain_reduction.obbt import _bt_prep, _bt_cleanup
+import pyomo.environ as pe
+from pyomo.core.expr.current import LinearExpression
+from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
+import logging
 
 
-def filter_variables_from_solution(candidate_variables_at_relaxation_solution, tolerance=0):
+logger = logging.getLogger(__name__)
+
+
+def filter_variables_from_solution(candidate_variables_at_relaxation_solution, tolerance=1e-6):
     """
     This function takes a set of candidate variables for OBBT and filters out 
     the variables that are at their bounds in the provided solution to the 
@@ -53,7 +61,8 @@ def filter_variables_from_solution(candidate_variables_at_relaxation_solution, t
     return vars_to_minimize, vars_to_maximize
 
 
-def aggresive_filter(candidate_variables, relaxation, solver, tolerance=0):
+def aggresive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, objective_bound=None,
+                     max_iter=10, improvement_threshold=5):
     """
     This function takes a set of candidate variables for OBBT and filters out 
     the variables for which it does not make senese to perform OBBT on. See 
@@ -72,7 +81,7 @@ def aggresive_filter(candidate_variables, relaxation, solver, tolerance=0):
 
     Parameters
     ----------
-    candidate_variables_at_relaxation_solution: iterable of _GeneralVarData
+    candidate_variables: iterable of _GeneralVarData
         This should be an iterable of the variables which are candidates 
         for OBBT.
     relaxation: Block
@@ -83,6 +92,12 @@ def aggresive_filter(candidate_variables, relaxation, solver, tolerance=0):
         is within tolerance of its lower bound, then that variable is filtered
         from the set of variables that should be minimized for OBBT. The same
         is true for upper bounds and variables that should be maximized.
+    objective_bound: float
+        Primal bound for the objective
+    max_iter: int
+        Maximum number of iterations
+    improvement_threshold: int
+        If the number of filtered variables is less than improvement_threshold, then the filtering is terminated
 
     Returns
     -------
@@ -91,10 +106,77 @@ def aggresive_filter(candidate_variables, relaxation, solver, tolerance=0):
     vars_to_maximize: list of _GeneralVarData
         variables that should be considered for maximization
     """
-    vars_to_minimize = ComponentSet(candidate_variables_at_relaxation_solution)
-    vars_to_maximize = ComponentSet(candidate_variables_at_relaxation_solution)
+    vars_to_minimize = ComponentSet(candidate_variables)
+    vars_to_maximize = ComponentSet(candidate_variables)
 
-    
+    initial_var_values, deactivated_objectives = _bt_prep(model=relaxation, solver=solver,
+                                                          objective_bound=objective_bound)
+
+    vars_unbounded_from_below = ComponentSet()
+    vars_unbounded_from_above = ComponentSet()
+    for v in list(vars_to_minimize):
+        if v.lb is None:
+            vars_unbounded_from_below.add(v)
+            vars_to_minimize.remove(v)
+    for v in list(vars_to_maximize):
+        if v.ub is None:
+            vars_unbounded_from_above.add(v)
+            vars_to_maximize.remove(v)
+
+    for _set in [vars_to_minimize, vars_to_maximize]:
+        for _iter in range(max_iter):
+            if _set is vars_to_minimize:
+                obj_coefs = [1 for v in _set]
+            else:
+                obj_coefs = [-1 for v in _set]
+            obj_vars = list(_set)
+            relaxation.__filter_obj = pe.Objective(expr=LinearExpression(linear_coefs=obj_coefs, linear_vars=obj_vars))
+            if isinstance(solver, PersistentSolver):
+                solver.set_objective(relaxation.__filter_obj)
+                res = solver.solve(save_results=False, load_solutions=False)
+                if res.solver.termination_condition == pe.TerminationCondition.optimal:
+                    solver.load_vars()
+                    success = True
+                else:
+                    success = False
+            else:
+                res = solver.solve(relaxation, load_solutions=False)
+                if res.solver.termination_condition == pe.TerminationCondition.optimal:
+                    relaxation.solutions.load_from(res)
+                    success = True
+                else:
+                    success = False
+            del relaxation.__filter_obj
+
+            if not success:
+                break
+
+            num_filtered = 0
+            for v in list(_set):
+                should_filter = False
+                if _set is vars_to_minimize:
+                    if v.value - v.lb <= tolerance:
+                        should_filter = True
+                else:
+                    if v.ub - v.value <= tolerance:
+                        should_filter = True
+                if should_filter:
+                    num_filtered += 1
+                    _set.remove(v)
+            logger.info('filtered {0} vars on iter {1}'.format(num_filtered, _iter))
+
+            if len(_set) == 0:
+                break
+            if num_filtered < improvement_threshold:
+                break
+
+    for v in vars_unbounded_from_below:
+        vars_to_minimize.add(v)
+    for v in vars_unbounded_from_above:
+        vars_to_maximize.add(v)
+
+    _bt_cleanup(model=relaxation, solver=solver, vardatalist=None, initial_var_values=initial_var_values,
+                deactivated_objectives=deactivated_objectives, lower_bounds=None, upper_bounds=None)
 
     return vars_to_minimize, vars_to_maximize
 
