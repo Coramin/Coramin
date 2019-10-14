@@ -1,1 +1,1 @@
-from .convex_outer_approximation import ConvexOuterApproximationSolver
+from .convex_outer_approximation import ECPBounder
