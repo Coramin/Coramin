@@ -20,6 +20,7 @@ class ConvexOuterApproximationSolver(PersistentSolver):
         self.feasibility_tol = 1e-6
         self._pyomo_model = None
         self.max_iter = 30
+        self.keep_cuts = False
 
     def set_instance(self, model, **kwargs):
         self._pyomo_model = model
@@ -91,7 +92,7 @@ class ConvexOuterApproximationSolver(PersistentSolver):
                     if viol > max_viol:
                         max_viol = viol
                     if viol > self.feasibility_tol:
-                        b.add_cut()
+                        b.add_cut(keep_cut=self.keep_cuts)
                         num_cuts_added += 1
 
             if obj.sense == pe.minimize:
