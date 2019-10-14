@@ -38,9 +38,9 @@ rel.x = pe.Var(bounds=(-2, 2))
 rel.x2 = pe.Var(bounds=compute_bounds_on_expr(rel.x**2))
 rel.x4 = pe.Var(bounds=compute_bounds_on_expr(rel.x2**2))
 rel.x2_con = coramin.relaxations.PWXSquaredRelaxation()
-rel.x2_con.build(x=rel.x, w=rel.x2, use_linear_relaxation=True)
+rel.x2_con.build(x=rel.x, aux_var=rel.x2, use_linear_relaxation=True)
 rel.x4_con = coramin.relaxations.PWXSquaredRelaxation()
-rel.x4_con.build(x=rel.x2, w=rel.x4, use_linear_relaxation=True)
+rel.x4_con.build(x=rel.x2, aux_var=rel.x4, use_linear_relaxation=True)
 rel.obj = pe.Objective(expr=rel.x4 - 3*rel.x2 + rel.x)
 
 
@@ -53,18 +53,18 @@ res = opt.solve(rel)
 lb = pe.value(rel.obj)
 print('gap: ' + str(100 * abs(ub - lb) / abs(ub)) + ' %')
 
-for _iter in range(5):
+for _iter in range(10):
     for b in rel.component_data_objects(pe.Block, active=True, sort=True, descend_into=True):
-        if isinstance(b, coramin.relaxations.BasePWRelaxationData):
+        if isinstance(b, coramin.relaxations.BaseRelaxationData):
             b.add_cut()
     res = opt.solve(rel)
     lb = pe.value(rel.obj)
     print('gap: ' + str(100 * abs(ub - lb) / abs(ub)) + ' %')
 
-# cuts generated with add_cut are discarded when rebuild is called (this is not true of add_point)
 # we want to discard the cuts generated above just to demonstrate OBBT
 for b in rel.component_data_objects(pe.Block, active=True, sort=True, descend_into=True):
     if isinstance(b, coramin.relaxations.BasePWRelaxationData):
+        b.clear_oa_points()
         b.rebuild()
 
 # Now refine the relaxation with OBBT
@@ -74,8 +74,8 @@ print('*********************************')
 res = opt.solve(rel)
 lb = pe.value(rel.obj)
 print('gap: ' + str(100 * abs(ub - lb) / abs(ub)) + ' %')
-for _iter in range(5):
-    coramin.domain_reduction.perform_obbt(rel, opt, [rel.x, rel.x2], objective_ub=ub)
+for _iter in range(10):
+    coramin.domain_reduction.perform_obbt(rel, opt, [rel.x, rel.x2], objective_bound=ub)
     for b in rel.component_data_objects(pe.Block, active=True, sort=True, descend_into=True):
         if isinstance(b, coramin.relaxations.BasePWRelaxationData):
             b.rebuild()

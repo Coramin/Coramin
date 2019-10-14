@@ -9,7 +9,7 @@ import math
 from pyomo.core.base.constraint import Constraint
 import logging
 from .univariate import PWUnivariateRelaxation, PWXSquaredRelaxation, PWCosRelaxation, PWSinRelaxation, PWArctanRelaxation
-from .pw_mccormick import PWMcCormickRelaxation
+from .mccormick import PWMcCormickRelaxation
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
 from pyomo.core.base.expression import _GeneralExpressionData, SimpleExpression
@@ -121,7 +121,7 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         arg2 = replace_sub_expression_with_aux_var(arg2, parent_block)
         relaxation_side = relaxation_side_map[node]
         relaxation = PWMcCormickRelaxation()
-        relaxation.set_input(x=arg1, y=arg2, w=_aux_var, relaxation_side=relaxation_side)
+        relaxation.set_input(x1=arg1, x2=arg2, aux_var=_aux_var, relaxation_side=relaxation_side)
         aux_var_map[id(arg1), id(arg2), 'mul'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
@@ -151,17 +151,17 @@ def _relax_leaf_to_root_ReciprocalExpression(node, values, aux_var_map, degree_m
         degree_map[_aux_var] = 1
         if compute_bounds_on_expr(arg)[0] > 0:
             relaxation = PWUnivariateRelaxation()
-            relaxation.set_input(x=arg, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
+            relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
                                  shape=FunctionShape.CONVEX)
         elif compute_bounds_on_expr(arg)[1] < 0:
             relaxation = PWUnivariateRelaxation()
-            relaxation.set_input(x=arg, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
+            relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
                                  shape=FunctionShape.CONCAVE)
         else:
             _one = parent_block.aux_vars.add()
             _one.fix(1.0)
             relaxation = PWMcCormickRelaxation()
-            relaxation.set_input(x=arg, y=_aux_var, w=_one, relaxation_side=relaxation_side)
+            relaxation.set_input(x1=arg, x2=_aux_var, aux_var=_one, relaxation_side=relaxation_side)
         aux_var_map[id(arg), 'reciprocal'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
@@ -212,17 +212,17 @@ def _relax_leaf_to_root_DivisionExpression(node, values, aux_var_map, degree_map
             degree_map[_aux_var] = 1
             if compute_bounds_on_expr(arg2)[0] > 0:
                 relaxation = PWUnivariateRelaxation()
-                relaxation.set_input(x=arg2, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg2,
+                relaxation.set_input(x=arg2, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg2,
                                      shape=FunctionShape.CONVEX)
             elif compute_bounds_on_expr(arg2)[1] < 0:
                 relaxation = PWUnivariateRelaxation()
-                relaxation.set_input(x=arg2, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg2,
+                relaxation.set_input(x=arg2, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg2,
                                      shape=FunctionShape.CONCAVE)
             else:
                 _one = parent_block.aux_vars.add()
                 _one.fix(1)
                 relaxation = PWMcCormickRelaxation()
-                relaxation.set_input(x=arg2, y=_aux_var, w=_one, relaxation_side=relaxation_side)
+                relaxation.set_input(x1=arg2, x2=_aux_var, aux_var=_one, relaxation_side=relaxation_side)
             aux_var_map[id(arg2), 'reciprocal'] = (_aux_var, relaxation)
             setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
             counter.increment()
@@ -235,7 +235,7 @@ def _relax_leaf_to_root_DivisionExpression(node, values, aux_var_map, degree_map
         arg2 = replace_sub_expression_with_aux_var(arg2, parent_block)
         relaxation_side = relaxation_side_map[node]
         relaxation = PWMcCormickRelaxation()
-        relaxation.set_input(x=arg2, y=_aux_var, w=arg1, relaxation_side=relaxation_side)
+        relaxation.set_input(x1=arg2, x2=_aux_var, aux_var=arg1, relaxation_side=relaxation_side)
         aux_var_map[id(arg1), id(arg2), 'div'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
@@ -257,7 +257,7 @@ def _relax_quadratic(arg1, aux_var_map, relaxation_side, degree_map, parent_bloc
         arg1 = replace_sub_expression_with_aux_var(arg1, parent_block)
         degree_map[_aux_var] = 1
         relaxation = PWXSquaredRelaxation()
-        relaxation.set_input(x=arg1, w=_aux_var, relaxation_side=relaxation_side)
+        relaxation.set_input(x=arg1, aux_var=_aux_var, relaxation_side=relaxation_side)
         aux_var_map[id(arg1), 'quadratic'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel' + str(counter), relaxation)
         counter.increment()
@@ -281,7 +281,7 @@ def _relax_convex_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, pare
             _x = arg1
         degree_map[_aux_var] = 1
         relaxation = PWUnivariateRelaxation()
-        relaxation.set_input(x=_x, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
+        relaxation.set_input(x=_x, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
                              shape=FunctionShape.CONVEX)
         aux_var_map[id(arg1), id(arg2), 'pow'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel' + str(counter), relaxation)
@@ -301,7 +301,7 @@ def _relax_concave_pow(arg1, arg2, aux_var_map, relaxation_side, degree_map, par
         arg1 = replace_sub_expression_with_aux_var(arg1, parent_block)
         degree_map[_aux_var] = 1
         relaxation = PWUnivariateRelaxation()
-        relaxation.set_input(x=arg1, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
+        relaxation.set_input(x=arg1, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=arg1 ** arg2,
                              shape=FunctionShape.CONCAVE)
         aux_var_map[id(arg1), id(arg2), 'pow'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel' + str(counter), relaxation)
@@ -450,7 +450,7 @@ def _relax_leaf_to_root_exp(node, values, aux_var_map, degree_map, parent_block,
         relaxation_side = relaxation_side_map[node]
         degree_map[_aux_var] = 1
         relaxation = PWUnivariateRelaxation()
-        relaxation.set_input(x=arg, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=pe.exp(arg),
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=pe.exp(arg),
                              shape=FunctionShape.CONVEX)
         aux_var_map[id(arg), 'exp'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
@@ -478,9 +478,90 @@ def _relax_leaf_to_root_log(node, values, aux_var_map, degree_map, parent_block,
         relaxation_side = relaxation_side_map[node]
         degree_map[_aux_var] = 1
         relaxation = PWUnivariateRelaxation()
-        relaxation.set_input(x=arg, w=_aux_var, relaxation_side=relaxation_side, f_x_expr=pe.log(arg),
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=pe.log(arg),
                              shape=FunctionShape.CONCAVE)
         aux_var_map[id(arg), 'log'] = (_aux_var, relaxation)
+        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+        counter.increment()
+        return _aux_var
+
+
+def _relax_leaf_to_root_sin(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    degree = degree_map[arg]
+    if degree == 0:
+        res = pe.sin(arg)
+        degree_map[res] = 0
+        return res
+    elif (id(arg), 'sin') in aux_var_map:
+        _aux_var, relaxation = aux_var_map[id(arg), 'sin']
+        relaxation_side = relaxation_side_map[node]
+        if relaxation_side != relaxation.relaxation_side:
+            relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
+        return _aux_var
+    else:
+        _aux_var = _get_aux_var(parent_block, pe.sin(arg))
+        arg = replace_sub_expression_with_aux_var(arg, parent_block)
+        relaxation_side = relaxation_side_map[node]
+        degree_map[_aux_var] = 1
+        relaxation = PWSinRelaxation()
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side)
+        aux_var_map[id(arg), 'sin'] = (_aux_var, relaxation)
+        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+        counter.increment()
+        return _aux_var
+
+
+def _relax_leaf_to_root_cos(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    degree = degree_map[arg]
+    if degree == 0:
+        res = pe.cos(arg)
+        degree_map[res] = 0
+        return res
+    elif (id(arg), 'cos') in aux_var_map:
+        _aux_var, relaxation = aux_var_map[id(arg), 'cos']
+        relaxation_side = relaxation_side_map[node]
+        if relaxation_side != relaxation.relaxation_side:
+            relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
+        return _aux_var
+    else:
+        _aux_var = _get_aux_var(parent_block, pe.cos(arg))
+        arg = replace_sub_expression_with_aux_var(arg, parent_block)
+        relaxation_side = relaxation_side_map[node]
+        degree_map[_aux_var] = 1
+        relaxation = PWCosRelaxation()
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side)
+        aux_var_map[id(arg), 'cos'] = (_aux_var, relaxation)
+        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+        counter.increment()
+        return _aux_var
+
+
+def _relax_leaf_to_root_arctan(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    degree = degree_map[arg]
+    if degree == 0:
+        res = pe.atan(arg)
+        degree_map[res] = 0
+        return res
+    elif (id(arg), 'arctan') in aux_var_map:
+        _aux_var, relaxation = aux_var_map[id(arg), 'arctan']
+        relaxation_side = relaxation_side_map[node]
+        if relaxation_side != relaxation.relaxation_side:
+            relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
+        return _aux_var
+    else:
+        _aux_var = _get_aux_var(parent_block, pe.atan(arg))
+        arg = replace_sub_expression_with_aux_var(arg, parent_block)
+        relaxation_side = relaxation_side_map[node]
+        degree_map[_aux_var] = 1
+        relaxation = PWArctanRelaxation()
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side)
+        aux_var_map[id(arg), 'arctan'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
         return _aux_var
@@ -489,6 +570,9 @@ def _relax_leaf_to_root_log(node, values, aux_var_map, degree_map, parent_block,
 _unary_leaf_to_root_map = dict()
 _unary_leaf_to_root_map['exp'] = _relax_leaf_to_root_exp
 _unary_leaf_to_root_map['log'] = _relax_leaf_to_root_log
+_unary_leaf_to_root_map['sin'] = _relax_leaf_to_root_sin
+_unary_leaf_to_root_map['cos'] = _relax_leaf_to_root_cos
+_unary_leaf_to_root_map['atan'] = _relax_leaf_to_root_arctan
 
 
 def _relax_leaf_to_root_UnaryFunctionExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
@@ -600,9 +684,27 @@ def _relax_root_to_leaf_log(node, relaxation_side_map):
     relaxation_side_map[arg] = relaxation_side_map[node]
 
 
+def _relax_root_to_leaf_sin(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = RelaxationSide.BOTH
+
+
+def _relax_root_to_leaf_cos(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = RelaxationSide.BOTH
+
+
+def _relax_root_to_leaf_arctan(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = RelaxationSide.BOTH
+
+
 _unary_root_to_leaf_map = dict()
 _unary_root_to_leaf_map['exp'] = _relax_root_to_leaf_exp
 _unary_root_to_leaf_map['log'] = _relax_root_to_leaf_log
+_unary_root_to_leaf_map['sin'] = _relax_root_to_leaf_sin
+_unary_root_to_leaf_map['cos'] = _relax_root_to_leaf_cos
+_unary_root_to_leaf_map['atan'] = _relax_root_to_leaf_arctan
 
 
 def _relax_root_to_leaf_UnaryFunctionExpression(node, relaxation_side_map):

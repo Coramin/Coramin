@@ -23,7 +23,7 @@ def create_relaxation(a, b):
     m.objective = pe.Objective(expr=(a - m.x)**2 + b*m.z**2)
     m.con1 = pe.Constraint(expr=m.z == m.y - m.x_sq)
     m.x_sq_con = coramin.relaxations.PWXSquaredRelaxation()
-    m.x_sq_con.build(x=m.x, w=m.x_sq, use_linear_relaxation=True)
+    m.x_sq_con.build(x=m.x, aux_var=m.x_sq, use_linear_relaxation=True)
 
     return m
 
