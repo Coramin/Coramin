@@ -43,20 +43,20 @@ def filter_variables_from_solution(candidate_variables_at_relaxation_solution, t
 
     Returns
     -------
-    vars_to_minimize: list of _GeneralVarData
+    vars_to_minimize: ComponentSet of _GeneralVarData
         variables that should be considered for minimization
-    vars_to_maximize: list of _GeneralVarData
+    vars_to_maximize: ComponentSet of _GeneralVarData
         variables that should be considered for maximization
     """
     candidate_vars = ComponentSet(candidate_variables_at_relaxation_solution)
-    vars_to_minimize = list()
-    vars_to_maximize = list()
+    vars_to_minimize = ComponentSet()
+    vars_to_maximize = ComponentSet()
 
     for v in candidate_vars:
         if (not v.has_lb()) or (v.value - v.lb > tolerance):
-            vars_to_minimize.append(v)
+            vars_to_minimize.add(v)
         if (not v.has_ub()) or (v.ub - v.value > tolerance):
-            vars_to_maximize.append(v)
+            vars_to_maximize.add(v)
 
     return vars_to_minimize, vars_to_maximize
 
@@ -179,5 +179,3 @@ def aggresive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, ob
                 deactivated_objectives=deactivated_objectives, lower_bounds=None, upper_bounds=None)
 
     return vars_to_minimize, vars_to_maximize
-
-
