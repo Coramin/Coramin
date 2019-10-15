@@ -17,6 +17,7 @@ from pyomo.core.kernel.objective import minimize, maximize
 import logging
 import traceback
 import numpy as np
+from coramin.algorithms.ecp_bounder import ECPBounder
 try:
     import coramin.utils.mpi_utils as mpiu
     mpi_available = True
@@ -31,7 +32,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-_mip_solver_types = {GUROBISHELL, GurobiDirect, GurobiPersistent, CPLEXSHELL, CPLEXDirect, CPLEXPersistent, GLPKSHELL}
+_mip_solver_types = {GUROBISHELL, GurobiDirect, GurobiPersistent, CPLEXSHELL, CPLEXDirect, CPLEXPersistent, GLPKSHELL,
+                     ECPBounder}
 _acceptable_termination_conditions = {TC.optimal, TC.globallyOptimal}
 _acceptable_solver_status = {SolverStatus.ok}
 
