@@ -61,8 +61,8 @@ def filter_variables_from_solution(candidate_variables_at_relaxation_solution, t
     return vars_to_minimize, vars_to_maximize
 
 
-def aggresive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, objective_bound=None,
-                     max_iter=10, improvement_threshold=5):
+def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, objective_bound=None,
+                      max_iter=10, improvement_threshold=5):
     """
     This function takes a set of candidate variables for OBBT and filters out 
     the variables for which it does not make senese to perform OBBT on. See 

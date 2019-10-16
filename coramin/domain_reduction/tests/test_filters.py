@@ -17,7 +17,7 @@ class TestFilters(unittest.TestCase):
         self.assertIn(m.x, vars_to_max)
         self.assertNotIn(m.x, vars_to_min)
 
-    def test_aggresive_filter(self):
+    def test_aggressive_filter(self):
         m = pe.ConcreteModel()
         m.y = pe.Var()
         m.x = pe.Var(bounds=(-2, -1))
@@ -25,7 +25,7 @@ class TestFilters(unittest.TestCase):
         m.c = pe.Constraint(expr=m.y == -m.x**2)
         coramin.relaxations.relax(m, in_place=True)
         opt = pe.SolverFactory('glpk')
-        vars_to_min, vars_to_max = coramin.domain_reduction.aggresive_filter(candidate_variables=[m.x], relaxation=m,
+        vars_to_min, vars_to_max = coramin.domain_reduction.aggressive_filter(candidate_variables=[m.x], relaxation=m,
                                                                              solver=opt)
         self.assertNotIn(m.x, vars_to_max)
         self.assertNotIn(m.x, vars_to_min)
