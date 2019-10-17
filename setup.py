@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+rom setuptools import setup, find_packages
 from distutils.core import Extension
 
 DISTNAME = 'coramin'
