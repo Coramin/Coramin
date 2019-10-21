@@ -127,6 +127,22 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub, reset=False):
             else:
                 solver.load_vars([v])
                 new_bnd = pyo.value(v.value)
+        elif isinstance(solver, ECPBounder):
+            if lb_or_ub == 'lb':
+                if results.problem.lower_bound is not None and math.isfinite(results.problem.lower_bound):
+                    new_bnd = results.problem.lower_bound
+                else:
+                    new_bnd = None
+                    msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(
+                        v, results.solver.termination_condition)
+                    logger.warning(msg)
+            else:
+                if results.problem.upper_bound is not None and math.isfinite(results.problem.upper_bound):
+                    new_bnd = results.problem.upper_bound
+                else:
+                    new_bnd = None
+                    msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
+                    logger.warning(msg)
         else:
             new_bnd = None
             msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
