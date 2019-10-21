@@ -17,6 +17,8 @@ from pyomo.core.kernel.objective import minimize, maximize
 import logging
 import traceback
 import numpy as np
+import math
+import time
 from coramin.algorithms.ecp_bounder import ECPBounder
 try:
     import coramin.utils.mpi_utils as mpiu
@@ -100,7 +102,7 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
                 solver.update_var(v)
 
 
-def _single_solve(v, model, solver, vardatalist, lb_or_ub):
+def _single_solve(v, model, solver, vardatalist, lb_or_ub, reset=False):
     # solve for lower var bound
     if lb_or_ub == 'lb':
         model.__obj_bounds_tightening = pyo.Objective(expr=v, sense=pyo.minimize)
@@ -110,6 +112,8 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
     if isinstance(solver, DirectOrPersistentSolver):
         if isinstance(solver, PersistentSolver):
             solver.set_objective(model.__obj_bounds_tightening)
+            if reset:
+                solver.reset()
             results = solver.solve(tee=False, load_solutions=False, save_results=False)
         else:
             results = solver.solve(model, tee=False, load_solutions=False, save_results=False)
@@ -169,7 +173,7 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub):
     return new_bnd
 
 
-def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False):
+def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False, reset=False, time_limit=math.inf):
     """
     Tighten the lower bounds of all variables in vardatalist (or self.vars_to_tighten if vardatalist is None).
 
@@ -180,12 +184,14 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False)
     vardatalist: list of _GeneralVarData
     lb_or_ub: str
         'lb' or 'ub'
+    time_limit: float
 
     Returns
     -------
     new_bounds: list of float
     """
     # solve for the new bounds
+    t0 = time.time()
     new_bounds = list()
 
     if with_progress_bar:
@@ -198,12 +204,40 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, with_progress_bar=False)
         else:
             tqdm_position = 0
         for v in tqdm(vardatalist, ncols=100, desc='OBBT '+bnd_str, leave=False, position=tqdm_position):
-            new_bnd = _single_solve(v=v, model=model, solver=solver, vardatalist=vardatalist, lb_or_ub=lb_or_ub)
-            new_bounds.append(new_bnd)
+            if time.time() - t0 > time_limit:
+                if lb_or_ub == 'lb':
+                    if v.lb is None:
+                        new_bounds.append(np.nan)
+                    else:
+                        new_bounds.append(pyo.value(v.lb))
+                else:
+                    if v.ub is None:
+                        new_bounds.append(np.nan)
+                    else:
+                        new_bounds.append(pyo.value(v.ub))
+            else:
+                new_bnd = _single_solve(v=v, model=model, solver=solver,
+                                        vardatalist=vardatalist,
+                                        lb_or_ub=lb_or_ub, reset=reset)
+                new_bounds.append(new_bnd)
     else:
         for v in vardatalist:
-            new_bnd = _single_solve(v=v, model=model, solver=solver, vardatalist=vardatalist, lb_or_ub=lb_or_ub)
-            new_bounds.append(new_bnd)
+            if time.time() - t0 > time_limit:
+                if lb_or_ub == 'lb':
+                    if v.lb is None:
+                        new_bounds.append(np.nan)
+                    else:
+                        new_bounds.append(pyo.value(v.lb))
+                else:
+                    if v.ub is None:
+                        new_bounds.append(np.nan)
+                    else:
+                        new_bounds.append(pyo.value(v.ub))
+            else:
+                new_bnd = _single_solve(v=v, model=model, solver=solver,
+                                        vardatalist=vardatalist, lb_or_ub=lb_or_ub,
+                                        reset=reset)
+                new_bounds.append(new_bnd)
 
     return new_bounds
 
@@ -304,7 +338,7 @@ def _build_vardatalist(model, varlist=None):
 
 
 def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
-                 direction='both'):
+                 direction='both', reset=False, time_limit=math.inf):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -325,6 +359,11 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     with_progress_bar: bool
     direction: str
         Options are 'both', 'lbs', or 'ubs'
+    reset: bool
+        This is an option specifically for use with persistent solvers. If reset
+        is True, then any simplex warmstart will be discarded between solves.
+    time_limit: float
+        The maximum amount of time to be spent performing OBBT
 
     Returns
     -------
@@ -332,6 +371,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     upper_bounds: list of float
 
     """
+    t0 = time.time()
     initial_var_values, deactivated_objectives = _bt_prep(model=model, solver=solver, objective_bound=objective_bound)
 
     vardata_list = _build_vardatalist(model=model, varlist=varlist)
@@ -345,7 +385,12 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     exc = None
     try:
         if direction in {'both', 'lbs'}:
-            local_lower_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='lb', with_progress_bar=with_progress_bar)
+            local_lower_bounds = _tighten_bnds(model=model, solver=solver,
+                                               vardatalist=local_vardata_list,
+                                               lb_or_ub='lb',
+                                               with_progress_bar=with_progress_bar,
+                                               reset=reset,
+                                               time_limit=(time_limit - (time.time() - t0)))
         else:
             local_lower_bounds = list()
             for v in local_vardata_list:
@@ -354,7 +399,12 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
                 else:
                     local_lower_bounds.append(pyo.value(v.lb))
         if direction in {'both', 'ubs'}:
-            local_upper_bounds = _tighten_bnds(model=model, solver=solver, vardatalist=local_vardata_list, lb_or_ub='ub', with_progress_bar=with_progress_bar)
+            local_upper_bounds = _tighten_bnds(model=model, solver=solver,
+                                               vardatalist=local_vardata_list,
+                                               lb_or_ub='ub',
+                                               with_progress_bar=with_progress_bar,
+                                               reset=reset,
+                                               time_limit=(time_limit - (time.time() - t0)))
         else:
             local_upper_bounds = list()
             for v in local_vardata_list:

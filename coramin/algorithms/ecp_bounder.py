@@ -34,6 +34,8 @@ class _ECPBounder(OptSolver):
                                                      doc='Maximum number of iterations'))
         self.options.declare('keep_cuts', ConfigValue(default=False, domain=In([True, False]),
                                                       doc='Whether or not to keep the cuts generated after the solve'))
+        self.options.declare('time_limit', ConfigValue(default=float('inf'), domain=NonNegativeFloat,
+                                                       doc='Time limit in seconds'))
 
         self.subproblem_solver_options = ConfigBlock(implicit=True)
 
@@ -69,6 +71,10 @@ class _ECPBounder(OptSolver):
                         self._relaxations_not_tracking_solver.add(b)
 
         for _iter in range(options.max_iter):
+            if time.time() - t0 > options.time_limit:
+                final_res.solver.termination_condition = pe.TerminationCondition.maxTimeLimit
+                final_res.solver.status = pe.SolverStatus.aborted
+                break
             if self._using_persistent_solver:
                 res = self._subproblem_solver.solve(save_results=False, options=subproblem_solver_options)
             else:
