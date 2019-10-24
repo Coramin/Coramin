@@ -258,28 +258,22 @@ class BaseRelaxationData(_BlockData):
     def _get_pprint_string(self, relational_operator_string):
         return 'Relaxation for {0} {1} {2}'.format(self.get_aux_var().name, relational_operator_string, str(self.get_rhs_expr()))
 
-    def pprint(self, filename=None, ostream=None, verbose=False, prefix=""):
-        if filename is not None:
-            output = open(filename, 'w')
-            self.pprint(ostream=output, verbose=verbose, prefix=prefix)
-            output.close()
+    def pprint(self, ostream=None, verbose=False, prefix=""):
+        if ostream is None:
+            ostream = sys.stdout
 
+        if self.relaxation_side == RelaxationSide.BOTH:
+            relational_operator = '=='
+        elif self.relaxation_side == RelaxationSide.UNDER:
+            relational_operator = '>='
+        elif self.relaxation_side == RelaxationSide.OVER:
+            relational_operator = '<='
         else:
-            if ostream is None:
-                ostream = sys.stdout
-
-            if self.relaxation_side == RelaxationSide.BOTH:
-                relational_operator = '=='
-            elif self.relaxation_side == RelaxationSide.UNDER:
-                relational_operator = '>='
-            elif self.relaxation_side == RelaxationSide.OVER:
-                relational_operator = '<='
-            else:
-                raise ValueError('Unexpected relaxation side')
-            ostream.write('{0}{1}: {2}\n'.format(prefix, self.name, self._get_pprint_string(relational_operator)))
+            raise ValueError('Unexpected relaxation side')
+        ostream.write('{0}{1}: {2}\n'.format(prefix, self.name, self._get_pprint_string(relational_operator)))
 
         if verbose:
-            super(BaseRelaxationData, self).pprint(filename=filename, ostream=ostream,
+            super(BaseRelaxationData, self).pprint(ostream=ostream,
                                                    verbose=verbose, prefix=(prefix + '  '))
 
     def add_oa_point(self, var_values=None):
@@ -348,11 +342,11 @@ class BaseRelaxationData(_BlockData):
 
         cut_expr = None
 
-        rhs_val = pe.value(self.get_rhs_expr())
-        if rhs_val >= self.large_eval_tol or rhs_val < - self.large_eval_tol:
-            pass
-        else:
-            try:
+        try:
+            rhs_val = pe.value(self.get_rhs_expr())
+            if rhs_val >= self.large_eval_tol or rhs_val < - self.large_eval_tol:
+                pass
+            else:
                 if self.is_rhs_convex():
                     if self.relaxation_side == RelaxationSide.UNDER or self.relaxation_side == RelaxationSide.BOTH:
                         if check_violation:
@@ -369,8 +363,8 @@ class BaseRelaxationData(_BlockData):
                                 cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
                         else:
                             cut_expr = self.get_aux_var() <= taylor_series_expansion(self.get_rhs_expr())
-            except (OverflowError, ZeroDivisionError, ValueError):
-                pass
+        except (OverflowError, ZeroDivisionError, ValueError):
+            pass
         if cut_expr is not None:
             if not hasattr(self, '_cuts'):
                 self._cuts = None
