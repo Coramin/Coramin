@@ -354,7 +354,7 @@ def _build_vardatalist(model, varlist=None):
 
 
 def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
-                 direction='both', reset=False, time_limit=math.inf):
+                 direction='both', reset=False, time_limit=math.inf, parallel=True):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -380,6 +380,9 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
         is True, then any simplex warmstart will be discarded between solves.
     time_limit: float
         The maximum amount of time to be spent performing OBBT
+    parallel: bool
+        If True, then OBBT will automatically be performed in parallel if mpirun or mpiexec was used;
+        If False, then OBBT will not run in parallel even if mpirun or mpiexec was used;
 
     Returns
     -------
@@ -391,7 +394,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     initial_var_values, deactivated_objectives = _bt_prep(model=model, solver=solver, objective_bound=objective_bound)
 
     vardata_list = _build_vardatalist(model=model, varlist=varlist)
-    if mpi_available:
+    if mpi_available and parallel:
         mpi_interface = mpiu.MPIInterface()
         alloc_map = mpiu.MPIAllocationMap(mpi_interface, len(vardata_list))
         local_vardata_list = alloc_map.local_list(vardata_list)
@@ -436,7 +439,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
         status = 0
         msg = str(tb)
 
-    if mpi_available:
+    if mpi_available and parallel:
         local_status = np.array([status], dtype='i')
         global_status = np.array([0 for i in range(mpiu.MPI.COMM_WORLD.Get_size())], dtype='i')
         mpiu.MPI.COMM_WORLD.Allgatherv([local_status, mpiu.MPI.INT], [global_status, mpiu.MPI.INT])
@@ -453,7 +456,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
             logger.error('An error was raised during OBBT:\n' + msg)
             raise exc
 
-    if mpi_available:
+    if mpi_available and parallel:
         global_lower = alloc_map.global_list_float64(local_lower_bounds)
         global_upper = alloc_map.global_list_float64(local_upper_bounds)
     else:
