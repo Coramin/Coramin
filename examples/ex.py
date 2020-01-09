@@ -22,6 +22,7 @@ opt = pe.SolverFactory('ipopt')
 res = opt.solve(nlp)
 ub = pe.value(nlp.obj)
 
+
 # Build the relaxation
 """
 Reformulate the NLP as
