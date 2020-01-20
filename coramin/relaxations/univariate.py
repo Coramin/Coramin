@@ -805,11 +805,14 @@ class PWCosRelaxationData(PWUnivariateRelaxationData):
                                                use_linear_relaxation=use_linear_relaxation)
 
     def rebuild(self, build_nonlinear_constraint=False):
-        lb, ub = tuple(_get_bnds_list(self._x))
-        if lb >= -math.pi/2 and ub <= math.pi/2:
+        if build_nonlinear_constraint:
             super(PWCosRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
         else:
-            self.remove_relaxation()
+            lb, ub = tuple(_get_bnds_list(self._x))
+            if lb >= -math.pi/2 and ub <= math.pi/2:
+                super(PWCosRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+            else:
+                self.remove_relaxation()
 
     def is_rhs_convex(self):
         return False
@@ -845,11 +848,14 @@ class PWSinRelaxationData(PWUnivariateRelaxationData):
         self.rebuild()
 
     def rebuild(self, build_nonlinear_constraint=False):
-        lb, ub = tuple(_get_bnds_list(self._x))
-        if lb >= -math.pi / 2 and ub <= math.pi / 2:
+        if build_nonlinear_constraint:
             super(PWSinRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
         else:
-            self.remove_relaxation()
+            lb, ub = tuple(_get_bnds_list(self._x))
+            if lb >= -math.pi / 2 and ub <= math.pi / 2:
+                super(PWSinRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint)
+            else:
+                self.remove_relaxation()
 
     def _build_relaxation(self):
         if self.is_rhs_convex() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
