@@ -28,7 +28,7 @@ jobs:
         conda install mpi4py ipopt glpk
     - name: Test with nose
       run: |
-        nosetests -v --nologcapture --with-coverage --with-doctest --doctest-extension=.rst --cover-package=coramin coramin
+        nosetests -v --nologcapture --with-coverage --cover-xml --with-doctest --doctest-extension=.rst --cover-package=coramin coramin
     - name: upload coverage
       uses: codecov/codecov-action@v1
       with:
