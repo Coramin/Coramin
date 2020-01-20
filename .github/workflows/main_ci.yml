@@ -1,14 +1,10 @@
-name: coramin_main_ci
+name: main_ci
 
 on:
   schedule:
     - cron: "0 2 * * 1-5"
   pull_request:
-    branches: 
-      - main_branch
   push:
-    branches: 
-      - main_branch
 
 jobs:
   build:
