@@ -1,19 +1,18 @@
 name: main_ci
 
 on:
-  schedule:
-    - cron: "0 2 * * 1-5"
   pull_request:
   push:
+  schedule:
+    - cron: "0 2 * * 1-5"
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
-      max-parallel: 6
+      max-parallel: 2
       matrix:
         python-version: [3.6, 3.7]
-        os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v1
     - name: setup conda
