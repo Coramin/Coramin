@@ -1,10 +1,6 @@
 name: main_ci
 
-on:
-  pull_request:
-  push:
-  schedule:
-    - cron: "0 2 * * 1-5"
+on: [push, pull_request]
 
 jobs:
   build:
