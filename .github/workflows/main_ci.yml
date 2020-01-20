@@ -24,11 +24,13 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyomo numpy scipy nose cplex codecov
+        pip install pyomo numpy scipy nose cplex codecov coverage
         conda install mpi4py ipopt glpk
+	python setup.py develop
     - name: Test with nose
       run: |
         nosetests -v --nologcapture --with-coverage --cover-xml --with-doctest --doctest-extension=.rst --cover-package=coramin coramin
+	coverage report -m
     - name: upload coverage
       uses: codecov/codecov-action@v1
       with:
