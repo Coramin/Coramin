@@ -34,6 +34,8 @@ class _ECPBounder(OptSolver):
                                                      doc='Maximum number of iterations'))
         self.options.declare('keep_cuts', ConfigValue(default=False, domain=In([True, False]),
                                                       doc='Whether or not to keep the cuts generated after the solve'))
+        self.options.declare('time_limit', ConfigValue(default=float('inf'), domain=NonNegativeFloat,
+                                                       doc='Time limit in seconds'))
 
         self.subproblem_solver_options = ConfigBlock(implicit=True)
 
@@ -73,6 +75,11 @@ class _ECPBounder(OptSolver):
                         self._relaxations_not_tracking_solver.add(b)
 
         for _iter in range(options.max_iter):
+            if time.time() - t0 > options.time_limit:
+                final_res.solver.termination_condition = pe.TerminationCondition.maxTimeLimit
+                final_res.solver.status = pe.SolverStatus.aborted
+                logger.warning('ECPBounder: time limit reached.')
+                break
             if self._using_persistent_solver:
                 res = self._subproblem_solver.solve(save_results=False, options=subproblem_solver_options)
             else:
@@ -80,6 +87,7 @@ class _ECPBounder(OptSolver):
             if res.solver.termination_condition != pe.TerminationCondition.optimal:
                 final_res.solver.termination_condition = pe.TerminationCondition.other
                 final_res.solver.status = pe.SolverStatus.aborted
+                logger.warning('ECPBounder: subproblem did not terminate optimally')
                 break
 
             num_cuts_added = 0
@@ -117,11 +125,13 @@ class _ECPBounder(OptSolver):
             if num_cuts_added == 0:
                 final_res.solver.termination_condition = pe.TerminationCondition.optimal
                 final_res.solver.status = pe.SolverStatus.ok
+                logger.info('ECPBounder: converged!')
                 break
 
             if _iter == options.max_iter - 1:
                 final_res.solver.termination_condition = pe.TerminationCondition.maxIterations
                 final_res.solver.status = pe.SolverStatus.aborted
+                logger.warning('ECPBounder: reached maximum number of iterations')
 
         if not options.keep_cuts:
             for b in self._relaxations_with_added_cuts:
