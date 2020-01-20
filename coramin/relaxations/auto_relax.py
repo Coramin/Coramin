@@ -3,7 +3,7 @@ from pyomo.core.kernel.component_map import ComponentMap
 import pyomo.core.expr.numeric_expr as numeric_expr
 from pyomo.core.expr.visitor import ExpressionValueVisitor, identify_variables
 from pyomo.core.expr.numvalue import nonpyomo_leaf_types, value
-from pyomo.core.expr.numvalue import is_fixed, polynomial_degree, is_constant
+from pyomo.core.expr.numvalue import is_fixed, polynomial_degree, is_constant, native_numeric_types
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr, fbbt
 import math
 from pyomo.core.base.constraint import Constraint
@@ -350,7 +350,6 @@ def _relax_leaf_to_root_PowExpression(node, values, aux_var_map, degree_map, par
                     degree_map[res] = 1
                     return res
             else:
-                assert compute_bounds_on_expr(arg1)[0] >= 0
                 if arg2 < 1:
                     return _relax_concave_pow(arg1=arg1, arg2=arg2, aux_var_map=aux_var_map,
                                               relaxation_side=relaxation_side_map[node], degree_map=degree_map,
@@ -486,6 +485,34 @@ def _relax_leaf_to_root_log(node, values, aux_var_map, degree_map, parent_block,
         return _aux_var
 
 
+def _relax_leaf_to_root_log10(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    degree = degree_map[arg]
+    if degree == 0:
+        res = pe.exp(arg)
+        degree_map[res] = 0
+        return res
+    elif (id(arg), 'log10') in aux_var_map:
+        _aux_var, relaxation = aux_var_map[id(arg), 'log10']
+        relaxation_side = relaxation_side_map[node]
+        if relaxation_side != relaxation.relaxation_side:
+            relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
+        return _aux_var
+    else:
+        _aux_var = _get_aux_var(parent_block, pe.log10(arg))
+        arg = replace_sub_expression_with_aux_var(arg, parent_block)
+        relaxation_side = relaxation_side_map[node]
+        degree_map[_aux_var] = 1
+        relaxation = PWUnivariateRelaxation()
+        relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=pe.log10(arg),
+                             shape=FunctionShape.CONCAVE)
+        aux_var_map[id(arg), 'log10'] = (_aux_var, relaxation)
+        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+        counter.increment()
+        return _aux_var
+
+
 def _relax_leaf_to_root_sin(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
     arg = values[0]
     degree = degree_map[arg]
@@ -570,6 +597,7 @@ def _relax_leaf_to_root_arctan(node, values, aux_var_map, degree_map, parent_blo
 _unary_leaf_to_root_map = dict()
 _unary_leaf_to_root_map['exp'] = _relax_leaf_to_root_exp
 _unary_leaf_to_root_map['log'] = _relax_leaf_to_root_log
+_unary_leaf_to_root_map['log10'] = _relax_leaf_to_root_log10
 _unary_leaf_to_root_map['sin'] = _relax_leaf_to_root_sin
 _unary_leaf_to_root_map['cos'] = _relax_leaf_to_root_cos
 _unary_leaf_to_root_map['atan'] = _relax_leaf_to_root_arctan
@@ -613,7 +641,24 @@ def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
     arg1, arg2 = node.args
     if is_fixed(arg1):
         relaxation_side_map[arg1] = RelaxationSide.BOTH
-        if pe.value(arg1) >= 0:
+        if isinstance(arg1, numeric_expr.ProductExpression):  # see Pyomo issue #1147
+            arg1_arg1 = arg1.args[0]
+            arg1_arg2 = arg1.args[1]
+            try:
+                arg1_arg1_val = pe.value(arg1_arg1)
+            except ValueError:
+                arg1_arg1_val = None
+            try:
+                arg1_arg2_val = pe.value(arg1_arg2)
+            except ValueError:
+                arg1_arg2_val = None
+            if arg1_arg1_val == 0 or arg1_arg2_val == 0:
+                arg1_val = 0
+            else:
+                arg1_val = pe.value(arg1)
+        else:
+            arg1_val = pe.value(arg1)
+        if arg1_val >= 0:
             relaxation_side_map[arg2] = relaxation_side_map[node]
         else:
             if relaxation_side_map[node] == RelaxationSide.UNDER:
@@ -624,7 +669,24 @@ def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
                 relaxation_side_map[arg2] = RelaxationSide.BOTH
     elif is_fixed(arg2):
         relaxation_side_map[arg2] = RelaxationSide.BOTH
-        if pe.value(arg2) >= 0:
+        if isinstance(arg2, numeric_expr.ProductExpression):  # see Pyomo issue #1147
+            arg2_arg1 = arg2.args[0]
+            arg2_arg2 = arg2.args[1]
+            try:
+                arg2_arg1_val = pe.value(arg2_arg1)
+            except ValueError:
+                arg2_arg1_val = None
+            try:
+                arg2_arg2_val = pe.value(arg2_arg2)
+            except ValueError:
+                arg2_arg2_val = None
+            if arg2_arg1_val == 0 or arg2_arg2_val == 0:
+                arg2_val = 0
+            else:
+                arg2_val = pe.value(arg2)
+        else:
+            arg2_val = pe.value(arg2)
+        if arg2_val >= 0:
             relaxation_side_map[arg1] = relaxation_side_map[node]
         else:
             if relaxation_side_map[node] == RelaxationSide.UNDER:
@@ -684,6 +746,11 @@ def _relax_root_to_leaf_log(node, relaxation_side_map):
     relaxation_side_map[arg] = relaxation_side_map[node]
 
 
+def _relax_root_to_leaf_log10(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = relaxation_side_map[node]
+
+
 def _relax_root_to_leaf_sin(node, relaxation_side_map):
     arg = node.args[0]
     relaxation_side_map[arg] = RelaxationSide.BOTH
@@ -702,6 +769,7 @@ def _relax_root_to_leaf_arctan(node, relaxation_side_map):
 _unary_root_to_leaf_map = dict()
 _unary_root_to_leaf_map['exp'] = _relax_root_to_leaf_exp
 _unary_root_to_leaf_map['log'] = _relax_root_to_leaf_log
+_unary_root_to_leaf_map['log10'] = _relax_root_to_leaf_log10
 _unary_root_to_leaf_map['sin'] = _relax_root_to_leaf_sin
 _unary_root_to_leaf_map['cos'] = _relax_root_to_leaf_cos
 _unary_root_to_leaf_map['atan'] = _relax_root_to_leaf_arctan
@@ -794,8 +862,6 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
         m = model.clone()
     else:
         m = model
-    if use_fbbt:
-        fbbt(m, deactivate_satisfied_constraints=True)
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)
@@ -882,8 +948,18 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
         else:
             parent_block.del_component(c)
 
-    for _aux_var, relaxation in aux_var_map.values():
-        relaxation.use_linear_relaxation = True
-        relaxation.rebuild()
+    if use_fbbt:
+        for _aux_var, relaxation in aux_var_map.values():
+            relaxation.rebuild(build_nonlinear_constraint=True)
+
+        fbbt(m, deactivate_satisfied_constraints=True)
+
+        for _aux_var, relaxation in aux_var_map.values():
+            relaxation.use_linear_relaxation = True
+            relaxation.rebuild()
+    else:
+        for _aux_var, relaxation in aux_var_map.values():
+            relaxation.use_linear_relaxation = True
+            relaxation.rebuild()
 
     return m
