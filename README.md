@@ -18,3 +18,21 @@ has tools for domain reduction, including a parallel implementation
 of optimization-based bounds tightening (OBBT) and various OBBT
 filtering techniques.
 
+Contributors
+------------
+Michael Bynum
+- Relaxation classes
+- OBBT
+- OBBT Filtering
+- Factorable programming approach to generating relaxations
+
+Carl Laird
+- Parallel OBBT
+- McCormick and piecewise McCormick relaxations for bilinear terms
+- Relaxations for univariate convex/concave fucntions
+
+Anya Castillo
+- Relaxation classes
+
+Francesco Ceccon
+- Alpha-BB relaxation
