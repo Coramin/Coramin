@@ -51,6 +51,3 @@ install:
 
 script:
     - nosetests -v --nologcapture --with-coverage --with-doctest --doctest-extension=.rst --cover-package=coramin coramin
-
-after_success:
-    - codecov
