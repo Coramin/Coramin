@@ -35,3 +35,14 @@ filtering techniques.
 
 ### [Francesco Ceccon](https://github.com/fracek)
 - Alpha-BB relaxation
+
+## Relevant Packages
+
+### [Pyomo](https://github.com/Pyomo/pyomo)
+Coramin is built upon Pyomo and is designed for integration with Pyomo models.
+
+### [Suspect](https://github.com/cog-imperial/suspect)
+Use of Coramin can be improved significantly by also utilizing
+Suspect's convexity detection and feasibility-based bounds tightening
+features. Future development of Coramin will directly use Suspect in
+Coramin's factorable programming approach to generating relaxations.
