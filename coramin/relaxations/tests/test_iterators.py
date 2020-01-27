@@ -29,6 +29,7 @@ class TestIterators(unittest.TestCase):
         m.b1.r1.add_partition_point(value=1)
         m.b1.r1.rebuild()
         m.b1.b1 = pe.Block()
+
         self.m = m
 
     def test_relaxation_data_objects(self):
