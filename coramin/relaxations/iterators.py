@@ -46,6 +46,8 @@ def nonrelaxation_component_data_objects(block, ctype=None, active=None, sort=Fa
     ----------
     block: pyomo.core.base.block._BlockData
         The Block in which to look for components
+    ctype: type
+        The type of component to iterate over
     descend_into: bool
         Whether or not to look for components in sub-blocks
     active: bool
@@ -57,6 +59,8 @@ def nonrelaxation_component_data_objects(block, ctype=None, active=None, sort=Fa
     components: generator
         A generator yielding the requested components.
     """
+    if not isinstance(ctype, type):
+        raise ValueError('nonrelaxation_component_data_objects expects ctype to be a type, not a ' + str(type(ctype)))
     if ctype is pe.Block:
         for b in _nonrelaxation_block_objects(block, descend_into=descend_into, active=active, sort=sort):
             yield b
