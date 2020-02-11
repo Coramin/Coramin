@@ -2,6 +2,8 @@ import unittest
 import math
 import pyomo.environ as pe
 import coramin
+import numpy as np
+from coramin.relaxations.segments import compute_k_segment_points
 
 
 class TestUnivariateExp(unittest.TestCase):
@@ -46,6 +48,89 @@ class TestUnivariateExp(unittest.TestCase):
         solver = pe.SolverFactory('glpk')
         solver.solve(model)
         self.assertAlmostEqual(pe.value(model.y), math.exp(-1.5), 4)
+
+
+class TestUnivariate(unittest.TestCase):
+    def helper(self, func, shape, bounds_list, relaxation_class, relaxation_side=coramin.utils.RelaxationSide.BOTH):
+        for lb, ub in bounds_list:
+            num_segments_list = [1, 2, 3]
+            m = pe.ConcreteModel()
+            m.x = pe.Var(bounds=(lb, ub))
+            m.aux = pe.Var()
+            if relaxation_class is coramin.relaxations.PWUnivariateRelaxation:
+                m.c = coramin.relaxations.PWUnivariateRelaxation()
+                m.c.build(x=m.x,
+                          aux_var=m.aux,
+                          relaxation_side=relaxation_side,
+                          shape=shape,
+                          f_x_expr=func(m.x))
+            else:
+                m.c = relaxation_class()
+                m.c.build(x=m.x, aux_var=m.aux, relaxation_side=relaxation_side)
+            m.p = pe.Param(mutable=True)
+            m.c2 = pe.Constraint(expr=m.x == m.p)
+            opt = pe.SolverFactory('cplex_direct')
+            for num_segments in num_segments_list:
+                segment_points = compute_k_segment_points(m.x, num_segments)
+                m.c.clear_partitions()
+                for pt in segment_points:
+                    m.c.add_partition_point(pt)
+                    var_values = pe.ComponentMap()
+                    var_values[m.x] = pt
+                    m.c.add_oa_point(var_values=var_values)
+                m.c.rebuild()
+                for _x in [float(i) for i in np.linspace(lb, ub, 10)]:
+                    m.p.value = _x
+                    if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.UNDER}:
+                        m.obj = pe.Objective(expr=m.aux)
+                        res = opt.solve(m, tee=False)
+                        self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
+                        self.assertLessEqual(m.aux.value, func(_x) + 1e-10)
+                        del m.obj
+                    if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.OVER}:
+                        m.obj = pe.Objective(expr=m.aux, sense=pe.maximize)
+                        res = opt.solve(m)
+                        self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
+                        self.assertGreaterEqual(m.aux.value, func(_x) - 1e-10)
+                        del m.obj
+
+    def test_exp(self):
+        self.helper(func=pe.exp, shape=coramin.utils.FunctionShape.CONVEX, bounds_list=[(-1, 1)],
+                    relaxation_class=coramin.relaxations.PWUnivariateRelaxation)
+
+    def test_log(self):
+        self.helper(func=pe.log, shape=coramin.utils.FunctionShape.CONCAVE, bounds_list=[(0.5, 1.5)],
+                    relaxation_class=coramin.relaxations.PWUnivariateRelaxation)
+
+    def test_quadratic(self):
+        def quadratic_func(x):
+            return x**2
+        self.helper(func=quadratic_func, shape=None, bounds_list=[(-1, 2)],
+                    relaxation_class=coramin.relaxations.PWXSquaredRelaxation)
+
+    def test_arctan(self):
+        self.helper(func=pe.atan, shape=None, bounds_list=[(-1, 1), (-1, 0), (0, 1)],
+                    relaxation_class=coramin.relaxations.PWArctanRelaxation)
+        self.helper(func=pe.atan, shape=None, bounds_list=[(-0.1, 1)],
+                    relaxation_class=coramin.relaxations.PWArctanRelaxation,
+                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.atan, shape=None, bounds_list=[(-1, 0.1)],
+                    relaxation_class=coramin.relaxations.PWArctanRelaxation,
+                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
+
+    def test_sin(self):
+        self.helper(func=pe.sin, shape=None, bounds_list=[(-1, 1), (-1, 0), (0, 1)],
+                    relaxation_class=coramin.relaxations.PWSinRelaxation)
+        self.helper(func=pe.sin, shape=None, bounds_list=[(-0.1, 1)],
+                    relaxation_class=coramin.relaxations.PWSinRelaxation,
+                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.sin, shape=None, bounds_list=[(-1, 0.1)],
+                    relaxation_class=coramin.relaxations.PWSinRelaxation,
+                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
+
+    def test_cos(self):
+        self.helper(func=pe.cos, shape=None, bounds_list=[(-1, 1)],
+                    relaxation_class=coramin.relaxations.PWCosRelaxation)
 
 
 class TestFeasibility(unittest.TestCase):
