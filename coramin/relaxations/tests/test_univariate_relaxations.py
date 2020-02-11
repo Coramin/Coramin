@@ -67,9 +67,9 @@ class TestUnivariate(unittest.TestCase):
             else:
                 m.c = relaxation_class()
                 m.c.build(x=m.x, aux_var=m.aux, relaxation_side=relaxation_side)
-            m.p = pe.Param(mutable=True)
+            m.p = pe.Param(mutable=True, initialize=0)
             m.c2 = pe.Constraint(expr=m.x == m.p)
-            opt = pe.SolverFactory('cplex_direct')
+            opt = pe.SolverFactory('cplex_persistent')
             for num_segments in num_segments_list:
                 segment_points = compute_k_segment_points(m.x, num_segments)
                 m.c.clear_partitions()
@@ -79,17 +79,22 @@ class TestUnivariate(unittest.TestCase):
                     var_values[m.x] = pt
                     m.c.add_oa_point(var_values=var_values)
                 m.c.rebuild()
+                opt.set_instance(m)
                 for _x in [float(i) for i in np.linspace(lb, ub, 10)]:
                     m.p.value = _x
+                    opt.remove_constraint(m.c2)
+                    opt.add_constraint(m.c2)
                     if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.UNDER}:
                         m.obj = pe.Objective(expr=m.aux)
-                        res = opt.solve(m, tee=False)
+                        opt.set_objective(m.obj)
+                        res = opt.solve()
                         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
                         self.assertLessEqual(m.aux.value, func(_x) + 1e-10)
                         del m.obj
                     if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.OVER}:
                         m.obj = pe.Objective(expr=m.aux, sense=pe.maximize)
-                        res = opt.solve(m)
+                        opt.set_objective(m.obj)
+                        res = opt.solve()
                         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
                         self.assertGreaterEqual(m.aux.value, func(_x) - 1e-10)
                         del m.obj
