@@ -2,10 +2,11 @@ import pyomo.environ as pe
 import coramin
 import unittest
 from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
-from pyomo.core.expr.visitor import identify_variables
+from pyomo.core.expr.visitor import identify_variables, identify_components
 import math
 from pyomo.core.kernel.component_set import ComponentSet
 import numpy as np
+from pyomo.core.base.param import _ParamData, SimpleParam
 
 
 class TestAutoRelax(unittest.TestCase):
@@ -975,3 +976,75 @@ class TestUnivariate(unittest.TestCase):
                     bounds_list=[(-1, 1)],
                     relaxation_side=coramin.utils.RelaxationSide.OVER,
                     expected_relaxation_side=coramin.utils.RelaxationSide.OVER)
+
+
+class TestRepeatedTerms(unittest.TestCase):
+    def helper(self, func, lb, ub):
+        m = pe.ConcreteModel()
+        m.x = pe.Var(bounds=(lb, ub))
+        m.aux1 = pe.Var()
+        m.aux2 = pe.Var()
+        m.c1 = pe.Constraint(expr=m.aux1 <= 2 * func(m.x) + 3)
+        m.c2 = pe.Constraint(expr=m.aux2 >= 3 * func(m.x) + 2)
+        coramin.relaxations.relax(m, in_place=True)
+        rels = list(coramin.relaxations.relaxation_data_objects(m))
+        self.assertEqual(len(rels), 1)
+        r = rels[0]
+        self.assertEqual(r.relaxation_side, coramin.utils.RelaxationSide.BOTH)
+
+    def test_exp(self):
+        self.helper(func=pe.exp, lb=-1, ub=1)
+
+    def test_log(self):
+        self.helper(func=pe.log, lb=0.5, ub=1.5)
+
+    def test_log10(self):
+        self.helper(func=pe.log10, lb=0.5, ub=1.5)
+
+    def test_quadratic(self):
+        def func(x):
+            return x**2
+        self.helper(func=func, lb=-1, ub=2)
+
+    def test_arctan(self):
+        self.helper(func=pe.atan, lb=-1, ub=1)
+
+    def test_sin(self):
+        self.helper(func=pe.sin, lb=-1, ub=1)
+
+    def test_cos(self):
+        self.helper(func=pe.cos, lb=-1, ub=1)
+
+
+class TestDegree0(unittest.TestCase):
+    def helper(self, func, param_val):
+        m = pe.ConcreteModel()
+        m.x = pe.Var(bounds=(-1, 1))
+        m.aux = pe.Var()
+        m.p = pe.Param(mutable=True, initialize=param_val)
+        m.c = pe.Constraint(expr=m.aux == func(m.p) * m.x**2)
+        self.assertIn(m.p, ComponentSet(identify_components(m.c.body, [_ParamData, SimpleParam])))
+        coramin.relaxations.relax(m, in_place=True)
+        rels = list(coramin.relaxations.relaxation_data_objects(m))
+        self.assertEqual(len(rels), 1)
+        r = rels[0]
+        self.assertIsInstance(r, coramin.relaxations.PWXSquaredRelaxationData)
+        self.assertIn(m.p, ComponentSet(identify_components(m.aux_cons[1].body, [_ParamData, SimpleParam])))
+
+    def test_exp(self):
+        self.helper(func=pe.exp, param_val=1)
+
+    def test_log(self):
+        self.helper(func=pe.log, param_val=1.5)
+
+    def test_log10(self):
+        self.helper(func=pe.log10, param_val=1.5)
+
+    def test_arctan(self):
+        self.helper(func=pe.atan, param_val=0.5)
+
+    def test_sin(self):
+        self.helper(func=pe.sin, param_val=0.5)
+
+    def test_cos(self):
+        self.helper(func=pe.cos, param_val=0.5)
