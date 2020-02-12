@@ -131,43 +131,6 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         return res
 
 
-def _relax_leaf_to_root_ReciprocalExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
-    arg = values[0]
-    degree = degree_map[arg]
-    if degree == 0:
-        res = 1/arg
-        degree_map[res] = 0
-        return res
-    elif (id(arg), 'reciprocal') in aux_var_map:
-        _aux_var, relaxation = aux_var_map[id(arg), 'reciprocal']
-        relaxation_side = relaxation_side_map[node]
-        if relaxation_side != relaxation.relaxation_side:
-            relaxation.relaxation_side = RelaxationSide.BOTH
-        return _aux_var
-    else:
-        _aux_var = _get_aux_var(parent_block, 1/arg)
-        arg = replace_sub_expression_with_aux_var(arg, parent_block)
-        relaxation_side = relaxation_side_map[node]
-        degree_map[_aux_var] = 1
-        if compute_bounds_on_expr(arg)[0] > 0:
-            relaxation = PWUnivariateRelaxation()
-            relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
-                                 shape=FunctionShape.CONVEX)
-        elif compute_bounds_on_expr(arg)[1] < 0:
-            relaxation = PWUnivariateRelaxation()
-            relaxation.set_input(x=arg, aux_var=_aux_var, relaxation_side=relaxation_side, f_x_expr=1/arg,
-                                 shape=FunctionShape.CONCAVE)
-        else:
-            _one = parent_block.aux_vars.add()
-            _one.fix(1.0)
-            relaxation = PWMcCormickRelaxation()
-            relaxation.set_input(x1=arg, x2=_aux_var, aux_var=_one, relaxation_side=relaxation_side)
-        aux_var_map[id(arg), 'reciprocal'] = (_aux_var, relaxation)
-        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
-        counter.increment()
-        return _aux_var
-
-
 def _relax_leaf_to_root_DivisionExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
     arg1, arg2 = values
     if arg1.__class__ == numeric_expr.MonomialTermExpression:
@@ -623,14 +586,12 @@ _relax_leaf_to_root_map[numeric_expr.SumExpression] = _relax_leaf_to_root_SumExp
 _relax_leaf_to_root_map[numeric_expr.MonomialTermExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.NegationExpression] = _relax_leaf_to_root_NegationExpression
 _relax_leaf_to_root_map[numeric_expr.PowExpression] = _relax_leaf_to_root_PowExpression
-_relax_leaf_to_root_map[numeric_expr.ReciprocalExpression] = _relax_leaf_to_root_ReciprocalExpression
 _relax_leaf_to_root_map[numeric_expr.DivisionExpression] = _relax_leaf_to_root_DivisionExpression
 _relax_leaf_to_root_map[numeric_expr.UnaryFunctionExpression] = _relax_leaf_to_root_UnaryFunctionExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_ProductExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_SumExpression] = _relax_leaf_to_root_SumExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_NegationExpression] = _relax_leaf_to_root_NegationExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_PowExpression] = _relax_leaf_to_root_PowExpression
-_relax_leaf_to_root_map[numeric_expr.NPV_ReciprocalExpression] = _relax_leaf_to_root_ReciprocalExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_DivisionExpression] = _relax_leaf_to_root_DivisionExpression
 _relax_leaf_to_root_map[numeric_expr.NPV_UnaryFunctionExpression] = _relax_leaf_to_root_UnaryFunctionExpression
 _relax_leaf_to_root_map[_GeneralExpressionData] = _relax_leaf_to_root_GeneralExpression
@@ -698,11 +659,6 @@ def _relax_root_to_leaf_ProductExpression(node, relaxation_side_map):
     else:
         relaxation_side_map[arg1] = RelaxationSide.BOTH
         relaxation_side_map[arg2] = RelaxationSide.BOTH
-
-
-def _relax_root_to_leaf_ReciprocalExpression(node, relaxation_side_map):
-    arg = node.args[0]
-    relaxation_side_map[arg] = RelaxationSide.BOTH
 
 
 def _relax_root_to_leaf_DivisionExpression(node, relaxation_side_map):
@@ -793,14 +749,12 @@ _relax_root_to_leaf_map[numeric_expr.SumExpression] = _relax_root_to_leaf_SumExp
 _relax_root_to_leaf_map[numeric_expr.MonomialTermExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.NegationExpression] = _relax_root_to_leaf_NegationExpression
 _relax_root_to_leaf_map[numeric_expr.PowExpression] = _relax_root_to_leaf_PowExpression
-_relax_root_to_leaf_map[numeric_expr.ReciprocalExpression] = _relax_root_to_leaf_ReciprocalExpression
 _relax_root_to_leaf_map[numeric_expr.DivisionExpression] = _relax_root_to_leaf_DivisionExpression
 _relax_root_to_leaf_map[numeric_expr.UnaryFunctionExpression] = _relax_root_to_leaf_UnaryFunctionExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_ProductExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_SumExpression] = _relax_root_to_leaf_SumExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_NegationExpression] = _relax_root_to_leaf_NegationExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_PowExpression] = _relax_root_to_leaf_PowExpression
-_relax_root_to_leaf_map[numeric_expr.NPV_ReciprocalExpression] = _relax_root_to_leaf_ReciprocalExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_DivisionExpression] = _relax_root_to_leaf_DivisionExpression
 _relax_root_to_leaf_map[numeric_expr.NPV_UnaryFunctionExpression] = _relax_root_to_leaf_UnaryFunctionExpression
 _relax_root_to_leaf_map[_GeneralExpressionData] = _relax_root_to_leaf_GeneralExpression
