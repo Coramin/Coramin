@@ -857,11 +857,53 @@ def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, d
     return new_expr
 
 
-def relax(model, descend_into=None, in_place=False, use_fbbt=True):
+def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=None):
+    """
+    Create a convex relaxation of the model.
+
+    Parameters
+    ----------
+    model: pyomo.core.base.block._BlockData or pyomo.core.base.PyomoModel.ConcreteModel
+        The model or block to be relaxed
+    descend_into: type or tuple of type
+        The types of pyomo components that should be checked for constraints to be relaxed. The
+        default is (Block, Disjunct).
+    in_place: bool
+        If True, then model will be modified in place. If False, model will be cloned, and
+        the clone will be relaxed.
+    use_fbbt: bool
+        If True, then FBBT will be used to tighten variable bounds.
+    fbbt_options: dict
+        The options to pass to the call to fbbt. See pyomo.contrib.fbbt.fbbt.fbbt for details.
+
+    Returns
+    -------
+    m: pyomo.core.base.block._BlockData or pyomo.core.base.PyomoModel.ConcreteModel
+        The relaxed model
+    """
+    """
+    For now, we will use FBBT both before relaxing the model and after relaxing the model. The reason we need to 
+    do it before relaxing the model is that the variable bounds will affect the structure of the relaxation. For 
+    example, if we need to relax x**3 and x >= 0, then we know x**3 is convex, and we can relax it as a 
+    convex, univariate function. However, if x can be positive or negative, then x**3 is neither convex nor concave.
+    In this case, we relax it by reformulating it as x * x**2. The hope is that performing FBBT before relaxing 
+    the model will help identify things like x >= 0 and therefore x**3 is convex. The correct way to do this is to 
+    update the relaxation classes so that the original expression is known, and the best relaxation can be used 
+    anytime the variable bounds are updated. For example, suppose the model is relaxed and, only after OBBT is 
+    performed, we find out x >= 0. We should be able to easily update the relaxation so that x**3 is then relaxed 
+    as a convex univariate function. The reason FBBT needs to be performed after relaxing the model is that 
+    we want to make sure that all of the auxilliary variables introduced get tightened bounds. The correct way to 
+    handle this is to perform FBBT with the original model with suspect, which forms a DAG. Each auxilliary variable 
+    introduced in the relaxed model corresponds to a node in the DAG. If we use suspect, then we can easily 
+    update the bounds of the auxilliary variables without performing FBBT a second time.
+    """
     if not in_place:
         m = model.clone()
     else:
         m = model
+
+    if use_fbbt:
+        fbbt(m, **fbbt_options)
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)
@@ -952,7 +994,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True):
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.rebuild(build_nonlinear_constraint=True)
 
-        fbbt(m, deactivate_satisfied_constraints=True, max_iter=2)
+        fbbt(m, **fbbt_options)
 
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.use_linear_relaxation = True
