@@ -2,7 +2,7 @@ from pyomo.core.base.block import _BlockData, Block
 from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
-from collections import Iterable
+from collections.abc import Iterable
 from pyomo.core.kernel.component_map import ComponentMap
 from pyomo.core.kernel.component_set import ComponentSet
 from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
@@ -459,11 +459,10 @@ class BasePWRelaxationData(BaseRelaxationData):
         for var, pts in self._partitions.items():
             lb, ub = tuple(_get_bnds_list(var))
 
-            if pts[0] < lb or pts[-1] > ub:
-                pts = [v for v in pts if (lb < v < ub)]
-                pts.insert(0, lb)
-                pts.append(ub)
-                self._partitions[var] = pts
+            pts = [v for v in pts if (lb < v < ub)]
+            pts.insert(0, lb)
+            pts.append(ub)
+            self._partitions[var] = pts
 
     def get_active_partitions(self):
         ans = ComponentMap()

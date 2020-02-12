@@ -53,11 +53,11 @@ def _compute_sine_underestimator_tangent_point(vub):
 
 
 def _atan_overestimator_fn(x, LB):
-    return (1 + x**2) * (np.arctan(x) - np.arctan(LB)) + x - LB
+    return (1 + x**2) * (np.arctan(x) - np.arctan(LB)) - x + LB
 
 
 def _atan_underestimator_fn(x, UB):
-    return (1 + x**2) * (np.arctan(x) - np.arctan(UB)) + x - UB
+    return (1 + x**2) * (np.arctan(x) - np.arctan(UB)) - x + UB
 
 
 def _compute_arctan_overestimator_tangent_point(vlb):
@@ -256,15 +256,6 @@ def pw_sin_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw_re
     if xub > np.pi / 2.0:
         return
 
-    if x_pts[0] >= 0:
-        pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
-                                 shape=FunctionShape.CONCAVE, relaxation_side=relaxation_side, pw_repn=pw_repn)
-        return
-    if x_pts[-1] <= 0:
-        pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
-                                 shape=FunctionShape.CONVEX, relaxation_side=relaxation_side, pw_repn=pw_repn)
-        return
-
     OE_tangent_x, OE_tangent_slope, OE_tangent_intercept = _compute_sine_overestimator_tangent_point(xlb)
     UE_tangent_x, UE_tangent_slope, UE_tangent_intercept = _compute_sine_underestimator_tangent_point(xub)
     non_piecewise_overestimators_pts = []
@@ -395,15 +386,6 @@ def pw_arctan_relaxation(b, x, w, x_pts, relaxation_side=RelaxationSide.BOTH, pw
 
     if x.is_fixed() or xlb == xub:
         b.x_fixed_con = pyo.Constraint(expr=w == pyo.value(expr))
-        return
-
-    if x_pts[0] >= 0:
-        pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
-                                 shape=FunctionShape.CONCAVE, relaxation_side=relaxation_side, pw_repn=pw_repn)
-        return
-    if x_pts[-1] <= 0:
-        pw_univariate_relaxation(b=b, x=x, w=w, x_pts=x_pts, f_x_expr=expr,
-                                 shape=FunctionShape.CONVEX, relaxation_side=relaxation_side, pw_repn=pw_repn)
         return
 
     if xlb == -math.inf or xub == math.inf:
@@ -797,12 +779,10 @@ class PWCosRelaxationData(PWUnivariateRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(PWCosRelaxationData, self).build(x=x, aux_var=aux_var, shape=FunctionShape.CONCAVE,
-                                               f_x_expr=pe.cos(x), pw_repn=pw_repn,
-                                               relaxation_side=relaxation_side,
-                                               persistent_solvers=persistent_solvers,
-                                               large_eval_tol=large_eval_tol,
-                                               use_linear_relaxation=use_linear_relaxation)
+        self.set_input(x=x, aux_var=aux_var, pw_repn=pw_repn, relaxation_side=relaxation_side,
+                       persistent_solvers=persistent_solvers, large_eval_tol=large_eval_tol,
+                       use_linear_relaxation=use_linear_relaxation)
+        self.rebuild()
 
     def rebuild(self, build_nonlinear_constraint=False):
         if build_nonlinear_constraint:
