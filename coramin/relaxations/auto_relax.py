@@ -902,6 +902,9 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
     else:
         m = model
 
+    if fbbt_options is None:
+        fbbt_options = dict()
+
     if use_fbbt:
         fbbt(m, **fbbt_options)
 
