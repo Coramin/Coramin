@@ -819,15 +819,16 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
     ----------
     model: pyomo.core.base.block._BlockData or pyomo.core.base.PyomoModel.ConcreteModel
         The model or block to be relaxed
-    descend_into: type or tuple of type
+    descend_into: type or tuple of type, optional
         The types of pyomo components that should be checked for constraints to be relaxed. The
         default is (Block, Disjunct).
-    in_place: bool
-        If True, then model will be modified in place. If False, model will be cloned, and
-        the clone will be relaxed.
-    use_fbbt: bool
-        If True, then FBBT will be used to tighten variable bounds.
-    fbbt_options: dict
+    in_place: bool, optional
+        If False (default=False), model will be cloned, and the clone will be relaxed. 
+        If True, then model will be modified in place.
+    use_fbbt: bool, optional
+        If True (default=True), then FBBT will be used to tighten variable bounds. If False, 
+        FBBT will not be used.
+    fbbt_options: dict, optional
         The options to pass to the call to fbbt. See pyomo.contrib.fbbt.fbbt.fbbt for details.
 
     Returns
