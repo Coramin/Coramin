@@ -952,7 +952,9 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.rebuild(build_nonlinear_constraint=True)
 
-        fbbt(m, **fbbt_options)
+        tmp_fbbt_options = dict(fbbt_options)
+        tmp_fbbt_options['deactivate_satisfied_constraints'] = False
+        fbbt(m, **tmp_fbbt_options)
 
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.use_linear_relaxation = True

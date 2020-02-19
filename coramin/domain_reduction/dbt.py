@@ -18,7 +18,7 @@ import numpy as np
 import math
 from pyomo.core.base.block import declare_custom_block, _BlockData
 from coramin.utils.pyomo_utils import get_obj
-from pyomo.core.base.objective import _ObjectiveData
+from pyomo.core.base.var import _GeneralVarData
 from coramin.relaxations.copy_relaxation import copy_relaxation_with_local_data
 
 
@@ -74,10 +74,10 @@ class TreeBlockData(_BlockData):
 
     def add_component(self, name, val):
         self._assert_setup()
-        if self.is_leaf() or self._allow_changes or isinstance(val, _ObjectiveData):
+        if self.is_leaf() or self._allow_changes or not isinstance(val, _GeneralVarData):
             _BlockData.add_component(self, name, val)
         else:
-            raise TreeBlockError('Pyomo components cannot be added to a TreeBlock unless it is a leaf.')
+            raise TreeBlockError('Pyomo variables cannot be added to a TreeBlock unless it is a leaf.')
 
     @property
     def children(self):
