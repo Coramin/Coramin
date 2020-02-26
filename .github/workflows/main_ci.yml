@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyomo numpy scipy nose codecov coverage cplex==12.9 sympy
+        pip install pyomo numpy scipy nose codecov coverage cplex==12.9 sympy networkx==2.3
         conda install mpi4py metis ipopt glpk wntr
         pip install metis
         pip install git+https://github.com/grid-parity-exchange/Egret.git
