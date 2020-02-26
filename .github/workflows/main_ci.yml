@@ -26,6 +26,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyomo numpy scipy nose codecov coverage cplex==12.9
         conda install mpi4py metis ipopt glpk wntr
+	pip install metis
         python setup.py develop
     - name: Test with nose
       run: |
