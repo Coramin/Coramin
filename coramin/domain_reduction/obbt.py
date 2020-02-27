@@ -325,7 +325,7 @@ def _bt_prep(model, solver, objective_bound=None):
     return initial_var_values, deactivated_objectives
 
 
-def _build_vardatalist(model, varlist=None):
+def _build_vardatalist(model, varlist=None, warning_threshold=0):
     """
     Convert a list of pyomo variables to a list of SimpleVar and _GeneralVarData. If varlist is none, builds a
     list of all variables in the model. The new list is stored in the vars_to_tighten attribute.
@@ -334,6 +334,9 @@ def _build_vardatalist(model, varlist=None):
     ----------
     model: ConcreteModel
     varlist: None or list of pyo.Var
+    warning_threshold: float
+        The threshold below which a warning is raised when attempting to perform OBBT on variables whose
+        ub - lb < warning_threshold.
     """
     vardatalist = None
 
@@ -359,8 +362,8 @@ def _build_vardatalist(model, varlist=None):
     for v in vardatalist:
         if not v.is_fixed():
             if v.has_lb() and v.has_ub():
-                if v.ub - v.lb < 1e-6:
-                    e = 'Warning: ub - lb is less than 1e-6: {0}, lb: {1}, ub: {2}'.format(v, v.lb, v.ub)
+                if v.ub - v.lb < warning_threshold:
+                    e = 'Warning: Tightening a variable with ub - lb is less than {threshold}: {v}, lb: {lb}, ub: {ub}'.format(threshold=warning_threshold, v=v, lb=v.lb, ub=v.ub)
                     logger.warning(e)
                     warnings.warn(e)
             corrected_vardatalist.append(v)
@@ -369,7 +372,8 @@ def _build_vardatalist(model, varlist=None):
 
 
 def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
-                 direction='both', reset=False, time_limit=math.inf, parallel=True, collect_obbt_info=False):
+                 direction='both', reset=False, time_limit=math.inf, parallel=True, collect_obbt_info=False,
+                 warning_threshold=0):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -398,6 +402,9 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     parallel: bool
         If True, then OBBT will automatically be performed in parallel if mpirun or mpiexec was used;
         If False, then OBBT will not run in parallel even if mpirun or mpiexec was used;
+    warning_threshold: float
+        The threshold below which a warning is issued when attempting to perform OBBT on variables whose
+        ub - lb < warning_threshold.
 
     Returns
     -------
@@ -414,7 +421,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     t0 = time.time()
     initial_var_values, deactivated_objectives = _bt_prep(model=model, solver=solver, objective_bound=objective_bound)
 
-    vardata_list = _build_vardatalist(model=model, varlist=varlist)
+    vardata_list = _build_vardatalist(model=model, varlist=varlist, warning_threshold=warning_threshold)
     if mpi_available and parallel:
         mpi_interface = mpiu.MPIInterface()
         alloc_map = mpiu.MPIAllocationMap(mpi_interface, len(vardata_list))
