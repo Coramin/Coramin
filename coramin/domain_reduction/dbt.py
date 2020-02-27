@@ -17,7 +17,7 @@ import metis
 import numpy as np
 import math
 from pyomo.core.base.block import declare_custom_block, _BlockData
-from coramin.utils.pyomo_utils import get_obj
+from coramin.utils.pyomo_utils import get_objective
 from pyomo.core.base.var import _GeneralVarData
 from coramin.relaxations.copy_relaxation import copy_relaxation_with_local_data
 
@@ -621,7 +621,7 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
             component_map = root_tree.build_pyomo_model(block=new_model)
             logger.info('done building pyomo model from tree')
 
-    obj = get_obj(model)
+    obj = get_objective(model)
     if obj is not None:
         var_map = {id(k): v for k, v in component_map.items()}
         new_model.objective = pe.Objective(expr=replace_expressions(obj.expr, substitution_map=var_map,

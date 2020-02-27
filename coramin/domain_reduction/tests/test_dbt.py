@@ -13,7 +13,7 @@ from egret.thirdparty.get_pglib_opf import get_pglib_opf
 from egret.data.model_data import ModelData
 from egret.models.acopf import create_rsv_acopf_model
 import os
-from coramin.utils.pyomo_utils import get_obj
+from coramin.utils.pyomo_utils import get_objective
 
 
 class TestTreeBlock(unittest.TestCase):
@@ -446,9 +446,9 @@ class TestDecompose(unittest.TestCase):
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(decomposed_res.solver.termination_condition, pe.TerminationCondition.optimal)
-        obj = get_obj(m)
-        relaxed_obj = get_obj(relaxed_m)
-        decomposed_obj = get_obj(decomposed_m)
+        obj = get_objective(m)
+        relaxed_obj = get_objective(relaxed_m)
+        decomposed_obj = get_objective(decomposed_m)
         val = pe.value(obj.expr)
         relaxed_val = pe.value(relaxed_obj.expr)
         decomposed_val = pe.value(decomposed_obj.expr)

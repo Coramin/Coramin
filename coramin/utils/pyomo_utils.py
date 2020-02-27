@@ -1,7 +1,7 @@
 import pyomo.environ as pe
 
 
-def get_obj(m):
+def get_objective(m):
     """
     Assert that there is only one active objective in m and return it.
 

@@ -60,14 +60,14 @@ rel_opt = pe.SolverFactory('gurobi_persistent')
 print('Solving NLP')
 res = nlp_opt.solve(nlp)
 assert res.solver.termination_condition == pe.TerminationCondition.optimal
-ub = pe.value(coramin.utils.get_obj(nlp))
+ub = pe.value(coramin.utils.get_objective(nlp))
 
 # solve the relaxation to get the lower bound
 print('Solving relaxation')
 rel_opt.set_instance(relaxation)
 res = rel_opt.solve(save_results=False)
 assert res.solver.termination_condition == pe.TerminationCondition.optimal
-lb = pe.value(coramin.utils.get_obj(relaxation))
+lb = pe.value(coramin.utils.get_objective(relaxation))
 gap = (ub - lb) / ub * 100
 print('{ub:<20}{lb:<20}{gap:<20}{time:<20}'.format(ub='UB', lb='LB', gap='% gap', time='Time'))
 t0 = time.time()
@@ -85,6 +85,6 @@ for _iter in range(3):
     rel_opt.set_instance(relaxation)
     res = rel_opt.solve(save_results=False)
     assert res.solver.termination_condition == pe.TerminationCondition.optimal
-    lb = pe.value(coramin.utils.get_obj(relaxation))
+    lb = pe.value(coramin.utils.get_objective(relaxation))
     gap = (ub - lb) / ub * 100
     print('{ub:<20.2f}{lb:<20.2f}{gap:<20.2f}{time:<20.2f}'.format(ub=ub, lb=lb, gap=gap, time=time.time() - t0))
