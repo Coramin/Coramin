@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Cplex needs to be less than 12.10 until there is a new Pyomo release
+        # Cplex needs to be less than 12.10 until there is a new Pyomo release (pyomo > 5.6.8)
         # We could also just test against Pyomo master - either approach would be fine
         pip install pyomo numpy scipy nose codecov coverage cplex==12.9 sympy
         # The Python wrapper for metis requires networkx < 2.4
