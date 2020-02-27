@@ -1,6 +1,9 @@
 """
-1;95;0cThis example demonstrates how to used decomposed bounds
-tightening. The example problem is an ACOPF problem.
+This example demonstrates how to used decomposed bounds
+tightening. The example problem is from minlplib.  In order to run
+this example, you have to download the problem file corresponding to
+the filename in the "read_osil" function bedlow. The file can be
+downloaded from minlplib.org. Suspect is also needed.
 """
 import pyomo.environ as pe
 import coramin
@@ -49,6 +52,7 @@ print('{ub:<20}{lb:<20}{gap:<20}{avg_rng:<20}{time:<20}'.format(ub='UB', lb='LB'
 t0 = time.time()
 print('{ub:<20.3f}{lb:<20.3f}{gap:<20.3f}{avg_rng:<20.3e}{time:<20.3f}'.format(ub=ub, lb=lb, gap=gap, avg_rng=avg_bound_range, time=time.time() - t0))
 
+# Perform bounds tightening
 for _iter in range(3):
     coramin.domain_reduction.perform_dbt(relaxation=relaxation,
                                          solver=rel_opt,
