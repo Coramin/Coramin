@@ -26,7 +26,7 @@ def get_minlplib_instancedata(download_dir=None):
         download_dir = os.path.join(os.getcwd(), 'minlplib')
 
     if not os.path.exists(download_dir):
-        os.mkdir(download_dir)
+        os.makedirs(download_dir)
 
     downloader = download.FileDownloader()
     downloader.set_destination_filename(os.path.join(download_dir, 'instancedata.csv'))
@@ -68,7 +68,7 @@ def filter_minlplib_instances(instancedata_download_dir=None,
     filename = os.path.join(instancedata_download_dir, 'instancedata.csv')
 
     if not os.path.exists(instancedata_download_dir):
-        os.mkdir(instancedata_download_dir)
+        os.makedirs(instancedata_download_dir)
 
     if not os.path.exists(filename):
         get_minlplib_instancedata(download_dir=instancedata_download_dir)
@@ -296,7 +296,7 @@ def filter_minlplib_instances(instancedata_download_dir=None,
     return cases
 
 
-def get_minlplib(download_dir=None, format='osil', instances=None):
+def get_minlplib(download_dir=None, format='osil'):
     """
     Download MINLPLib
 
@@ -307,28 +307,20 @@ def get_minlplib(download_dir=None, format='osil', instances=None):
         current_working_directory/minlplib/file_format/.
     format: str
         The file format requested. Options are ams, gms, lp, mod, nl, osil, and pip
-    instances: Iterable of str
-        The cases to download
     """
     if download_dir is None:
         download_dir = os.path.join(os.getcwd(), 'minlplib', format)
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
-    if instances is None:
-        downloader = download.FileDownloader()
-        zip_filename = os.path.join(download_dir, 'minlplib_'+format+'.zip')
-        downloader.set_destination_filename(zip_filename)
-        downloader.get_binary_file('http://www.minlplib.org/minlplib_'+format+'.zip')
-        zipper = ZipFile(zip_filename, 'r')
-        zipper.extractall(download_dir)
-        os.remove(zip_filename)
-        for i in os.listdir(os.path.join(download_dir, 'minlplib', format)):
-            os.rename(os.path.join(download_dir, 'minlplib', format, i), os.path.join(download_dir, i))
-        os.rmdir(os.path.join(download_dir, 'minlplib', format))
-        os.rmdir(os.path.join(download_dir, 'minlplib'))
-    else:
-        for _case in instances:
-            downloader = download.FileDownloader()
-            downloader.set_destination_filename(os.path.join(download_dir, _case+'.'+format))
-            downloader.get_binary_file('http://www.minlplib.org/'+format+'/'+_case+'.'+format)
+    downloader = download.FileDownloader()
+    zip_filename = os.path.join(download_dir, 'minlplib_'+format+'.zip')
+    downloader.set_destination_filename(zip_filename)
+    downloader.get_binary_file('http://www.minlplib.org/minlplib_'+format+'.zip')
+    zipper = ZipFile(zip_filename, 'r')
+    zipper.extractall(download_dir)
+    os.remove(zip_filename)
+    for i in os.listdir(os.path.join(download_dir, 'minlplib', format)):
+        os.rename(os.path.join(download_dir, 'minlplib', format, i), os.path.join(download_dir, i))
+    os.rmdir(os.path.join(download_dir, 'minlplib', format))
+    os.rmdir(os.path.join(download_dir, 'minlplib'))
