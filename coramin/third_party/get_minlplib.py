@@ -33,35 +33,35 @@ def get_minlplib_instancedata(download_dir=None):
     downloader.get_binary_file('http://www.minlplib.org/instancedata.csv')
 
 
-def filter_minlplib_cases(instancedata_download_dir=None,
-                          min_nvars=0, max_nvars=math.inf,
-                          min_nbinvars=0, max_nbinvars=math.inf,
-                          min_nintvars=0, max_nintvars=math.inf,
-                          min_nnlvars=0, max_nnlvars=math.inf,
-                          min_nnlbinvars=0, max_nnlbinvars=math.inf,
-                          min_nnlintvars=0, max_nnlintvars=math.inf,
-                          min_nobjnz=0, max_nobjnz=math.inf,
-                          min_nobjnlnz=0, max_nobjnlnz=math.inf,
-                          min_ncons=0, max_ncons=math.inf,
-                          min_nlincons=0, max_nlincons=math.inf,
-                          min_nquadcons=0, max_nquadcons=math.inf,
-                          min_npolynomcons=0, max_npolynomcons=math.inf,
-                          min_nsignomcons=0, max_nsignomcons=math.inf,
-                          min_ngennlcons=0, max_ngennlcons=math.inf,
-                          min_njacobiannz=0, max_njacobiannz=math.inf,
-                          min_njacobiannlnz=0, max_njacobiannlnz=math.inf,
-                          min_nlaghessiannz=0, max_nlaghessiannz=math.inf,
-                          min_nlaghessiandiagnz=0, max_nlaghessiandiagnz=math.inf,
-                          min_nsemi=0, max_nsemi=math.inf,
-                          min_nnlsemi=0, max_nnlsemi=math.inf,
-                          min_nsos1=0, max_nsos1=math.inf,
-                          min_nsos2=0, max_nsos2=math.inf,
-                          acceptable_formats=None,
-                          acceptable_probtype=None,
-                          acceptable_objtype=None,
-                          acceptable_objcurvature=None,
-                          acceptable_conscurvature=None,
-                          acceptable_convex=None):
+def filter_minlplib_instances(instancedata_download_dir=None,
+                              min_nvars=0, max_nvars=math.inf,
+                              min_nbinvars=0, max_nbinvars=math.inf,
+                              min_nintvars=0, max_nintvars=math.inf,
+                              min_nnlvars=0, max_nnlvars=math.inf,
+                              min_nnlbinvars=0, max_nnlbinvars=math.inf,
+                              min_nnlintvars=0, max_nnlintvars=math.inf,
+                              min_nobjnz=0, max_nobjnz=math.inf,
+                              min_nobjnlnz=0, max_nobjnlnz=math.inf,
+                              min_ncons=0, max_ncons=math.inf,
+                              min_nlincons=0, max_nlincons=math.inf,
+                              min_nquadcons=0, max_nquadcons=math.inf,
+                              min_npolynomcons=0, max_npolynomcons=math.inf,
+                              min_nsignomcons=0, max_nsignomcons=math.inf,
+                              min_ngennlcons=0, max_ngennlcons=math.inf,
+                              min_njacobiannz=0, max_njacobiannz=math.inf,
+                              min_njacobiannlnz=0, max_njacobiannlnz=math.inf,
+                              min_nlaghessiannz=0, max_nlaghessiannz=math.inf,
+                              min_nlaghessiandiagnz=0, max_nlaghessiandiagnz=math.inf,
+                              min_nsemi=0, max_nsemi=math.inf,
+                              min_nnlsemi=0, max_nnlsemi=math.inf,
+                              min_nsos1=0, max_nsos1=math.inf,
+                              min_nsos2=0, max_nsos2=math.inf,
+                              acceptable_formats=None,
+                              acceptable_probtype=None,
+                              acceptable_objtype=None,
+                              acceptable_objcurvature=None,
+                              acceptable_conscurvature=None,
+                              acceptable_convex=None):
     if instancedata_download_dir is None:
         instancedata_download_dir = os.path.join(os.getcwd(), 'minlplib')
 
@@ -71,7 +71,7 @@ def filter_minlplib_cases(instancedata_download_dir=None,
         os.mkdir(instancedata_download_dir)
 
     if not os.path.exists(filename):
-        get_instancedata(download_dir=instancedata_download_dir)
+        get_minlplib_instancedata(download_dir=instancedata_download_dir)
 
     if acceptable_formats is None:
         acceptable_formats = set(['ams', 'gms', 'lp', 'mod', 'nl', 'osil', 'pip'])
@@ -296,7 +296,7 @@ def filter_minlplib_cases(instancedata_download_dir=None,
     return cases
 
 
-def get_minlplib(download_dir=None, format='osil', cases=None):
+def get_minlplib(download_dir=None, format='osil', instances=None):
     """
     Download MINLPLib
 
@@ -307,7 +307,28 @@ def get_minlplib(download_dir=None, format='osil', cases=None):
         current_working_directory/minlplib/file_format/.
     format: str
         The file format requested. Options are ams, gms, lp, mod, nl, osil, and pip
-    conditions: dict
-        Conditions to place on the downloaded test problems.
+    instances: Iterable of str
+        The cases to download
     """
-    pass
+    if download_dir is None:
+        download_dir = os.path.join(os.getcwd(), 'minlplib', format)
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
+
+    if instances is None:
+        downloader = download.FileDownloader()
+        zip_filename = os.path.join(download_dir, 'minlplib_'+format+'.zip')
+        downloader.set_destination_filename(zip_filename)
+        downloader.get_binary_file('http://www.minlplib.org/minlplib_'+format+'.zip')
+        zipper = ZipFile(zip_filename, 'r')
+        zipper.extractall(download_dir)
+        os.remove(zip_filename)
+        for i in os.listdir(os.path.join(download_dir, 'minlplib', format)):
+            os.rename(os.path.join(download_dir, 'minlplib', format, i), os.path.join(download_dir, i))
+        os.rmdir(os.path.join(download_dir, 'minlplib', format))
+        os.rmdir(os.path.join(download_dir, 'minlplib'))
+    else:
+        for _case in instances:
+            downloader = download.FileDownloader()
+            downloader.set_destination_filename(os.path.join(download_dir, _case+'.'+format))
+            downloader.get_binary_file('http://www.minlplib.org/'+format+'/'+_case+'.'+format)
