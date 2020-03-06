@@ -3,7 +3,7 @@ import unittest
 import os
 
 
-class TestMINLPLibDownloader(unittest.TestCase):
+class TestMINLPLibTools(unittest.TestCase):
     def test_get_minlplib_instancedata(self):
         current_dir = os.path.abspath(os.path.dirname(__file__))
         coramin.third_party.get_minlplib_instancedata(download_dir=os.path.join(current_dir, 'minlplib'))
