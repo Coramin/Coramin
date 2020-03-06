@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def get_minlplib_instancedata(download_dir=None):
     """
-    Downlaod instancedata.csv from MINLPLib
+    Downlaod instancedata.csv from MINLPLib which can be used to get statistics on the problems from minlplib.
 
     Parameters
     ----------
@@ -62,6 +62,16 @@ def filter_minlplib_instances(instancedata_download_dir=None,
                               acceptable_objcurvature=None,
                               acceptable_conscurvature=None,
                               acceptable_convex=None):
+    """
+    This function filters problems from MINLPLib based on
+    instancedata.csv from MINLPLib and the conditions specified
+    through the function arguments. The function argument names
+    correspond to column headings from instancedata.csv. The 
+    arguments starting with min or max require integer inputs. 
+    The arguments starting with acceptable require either a 
+    string or an iterable of strings. See the MINLPLib documentation 
+    for acceptable values.
+    """
     if instancedata_download_dir is None:
         instancedata_download_dir = os.path.join(os.getcwd(), 'minlplib')
 
