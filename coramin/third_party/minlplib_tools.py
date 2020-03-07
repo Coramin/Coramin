@@ -12,28 +12,52 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def get_minlplib_instancedata(download_dir=None):
+def get_minlplib_instancedata(target_filename=None):
     """
-    Downlaod instancedata.csv from MINLPLib which can be used to get statistics on the problems from minlplib.
+    Download instancedata.csv from MINLPLib which can be used to get statistics on the problems from minlplib.
 
     Parameters
     ----------
-    download_dir: str
-        The directory in which to place the downloaded file. The default will be a 
-        directory called minlplib in the current working directory.
+    target_filename: str
+        The full path, including the filename for where to place the downloaded 
+        file. The default will be a directory called minlplib in the current 
+        working directory and a filename of instancedata.csv.
     """
-    if download_dir is None:
-        download_dir = os.path.join(os.getcwd(), 'minlplib')
+    if target_filename is None:
+        target_filename = os.path.join(os.getcwd(), 'minlplib', 'instancedata.csv')
+    download_dir = os.path.dirname(target_filename)
 
+    if os.path.exists(target_filename):
+        raise ValueError('A file named {filename} already exists.'.format(filename=target_filename))
+    
     if not os.path.exists(download_dir):
         os.makedirs(download_dir)
 
     downloader = download.FileDownloader()
-    downloader.set_destination_filename(os.path.join(download_dir, 'instancedata.csv'))
+    downloader.set_destination_filename(target_filename)
     downloader.get_binary_file('http://www.minlplib.org/instancedata.csv')
 
 
-def filter_minlplib_instances(instancedata_download_dir=None,
+def _process_acceptable_arg(name, arg, default):
+    if arg is None:
+        return default
+    if isinstance(arg, str):
+        if arg not in default:
+            raise ValueError("Unrecognized argument for %s: %s" % (name, arg))
+        return set([arg])
+    if isinstance(arg, Iterable):
+        ans = set(str(_) for _ in arg)
+        if not ans.issubset(default):
+            unknown = default - ans
+            raise ValueError("Unrecognized argument for %s: %s" % (name, unknown))
+        return ans
+    if type(arg) == bool:
+        if str(arg) in default:
+            return set([str(arg)])
+    raise ValueError('unrecognized type for %s: %s' % (name, type(arg)))
+
+
+def filter_minlplib_instances(instancedata_filename=None,
                               min_nvars=0, max_nvars=math.inf,
                               min_nbinvars=0, max_nbinvars=math.inf,
                               min_nintvars=0, max_nintvars=math.inf,
@@ -72,76 +96,57 @@ def filter_minlplib_instances(instancedata_download_dir=None,
     string or an iterable of strings. See the MINLPLib documentation 
     for acceptable values.
     """
-    if instancedata_download_dir is None:
-        instancedata_download_dir = os.path.join(os.getcwd(), 'minlplib')
+    if instancedata_filename is None:
+        instancedata_filename = os.path.join(os.getcwd(), 'minlplib', 'instancedata.csv')
+    instancedata_dirname = os.path.dirname(instancedata_filename)
 
-    filename = os.path.join(instancedata_download_dir, 'instancedata.csv')
+    if not os.path.exists(instancedata_dirname):
+        os.makedirs(instancedata_dirname)
 
-    if not os.path.exists(instancedata_download_dir):
-        os.makedirs(instancedata_download_dir)
+    if not os.path.exists(instancedata_filename):
+        get_minlplib_instancedata(target_filename=instancedata_filename)
 
-    if not os.path.exists(filename):
-        get_minlplib_instancedata(download_dir=instancedata_download_dir)
+    acceptable_formats = _process_acceptable_arg(
+        'acceptable_formats',
+        acceptable_formats,
+        set(['ams', 'gms', 'lp', 'mod', 'nl', 'osil', 'pip'])
+    )
 
-    if acceptable_formats is None:
-        acceptable_formats = set(['ams', 'gms', 'lp', 'mod', 'nl', 'osil', 'pip'])
-    elif isinstance(acceptable_formats, str):
-        acceptable_formats = set([acceptable_formats])
-    elif isinstance(acceptable_formats, Iterable):
-        acceptable_formats = set(acceptable_formats)
-    else:
-        raise ValueError('unrecognized type for acceptable_formats: {0}'.format(acceptable_formats))
-        
+    default_acceptable_probtype = set()
+    for pre in ['B', 'I', 'MI', 'MB', 'S', '']:
+        for post in ['NLP', 'QCQP', 'QP', 'QCP', 'P']:
+            default_acceptable_probtype.add(pre + post)
+    acceptable_probtype = _process_acceptable_arg(
+        'acceptable_probtype',
+        acceptable_probtype,
+        default_acceptable_probtype
+        )
 
-    if acceptable_probtype is None:
-        acceptable_probtype = set()
-        for pre in ['B', 'I', 'MI', 'MB', 'S', '']:
-            for post in ['NLP', 'QCQP', 'QP', 'QCP', 'P']:
-                acceptable_probtype.add(pre + post)
-    elif isinstance(acceptable_probtype, str):
-        acceptable_probtype = set([acceptable_probtype])
-    elif isinstance(acceptable_probtype, Iterable):
-        acceptable_probtype = set(acceptable_probtype)
-    else:
-        raise ValueError('unrecognized type for acceptable_probtype: {0}'.format(acceptable_probtype))
+    acceptable_objtype = _process_acceptable_arg(
+        'acceptable_objtype',
+        acceptable_objtype,
+        set(['constant', 'linear', 'quadratic', 'polynomial', 'signomial', 'nonlinear'])
+        )
 
-    if acceptable_objtype is None:
-        acceptable_objtype = set(['constant', 'linear', 'quadratic', 'polynomial', 'signomial', 'nonlinear'])
-    elif isinstance(acceptable_objtype, str):
-        acceptable_objtype = set([acceptable_objtype])
-    elif isinstance(acceptable_objtype, Iterable):
-        acceptable_objtype = set(acceptable_objtype)
-    else:
-        raise ValueError('unrecognized type for acceptable_objtype: {0}'.format(acceptable_objtype))
+    acceptable_objcurvature = _process_acceptable_arg(
+        'acceptable_objcurvature',
+        acceptable_objcurvature,
+        set(['linear', 'convex', 'concave', 'indefinite', 'nonconvex', 'nonconcave', 'unknown'])
+        )
 
-    if acceptable_objcurvature is None:
-        acceptable_objcurvature = set(['linear', 'convex', 'concave', 'indefinite', 'nonconvex', 'nonconcave', 'unknown'])
-    elif isinstance(acceptable_objcurvature, str):
-        acceptable_objcurvature = set([acceptable_objcurvature])
-    elif isinstance(acceptable_objcurvature, Iterable):
-        acceptable_objcurvature = set(acceptable_objcurvature)
-    else:
-        raise ValueError('unrecognized type for acceptable_objcurvature: {0}'.format(acceptable_objcurvature))
+    acceptable_conscurvature = _process_acceptable_arg(
+        'acceptable_conscurvature',
+        acceptable_conscurvature,
+        set(['linear', 'convex', 'concave', 'indefinite', 'nonconvex', 'nonconcave', 'unknown'])
+        )
 
-    if acceptable_conscurvature is None:
-        acceptable_conscurvature = set(['linear', 'convex', 'concave', 'indefinite', 'nonconvex', 'nonconcave', 'unknown'])
-    elif isinstance(acceptable_conscurvature, str):
-        acceptable_conscurvature = set([acceptable_conscurvature])
-    elif isinstance(acceptable_conscurvature, Iterable):
-        acceptable_conscurvature = set(acceptable_conscurvature)
-    else:
-        raise ValueError('unrecognized type for acceptable_conscurvature: {0}'.format(acceptable_conscurvature))
+    acceptable_convex = _process_acceptable_arg(
+        'acceptable_convex',
+        acceptable_convex,
+        set(['True', 'False', ''])
+        )
 
-    if acceptable_convex is None:
-        acceptable_convex = set(['True', 'False', ''])
-    elif isinstance(acceptable_convex, str):
-        acceptable_convex = set([acceptable_convex])
-    elif isinstance(acceptable_convex, Iterable):
-        acceptable_convex = set(str(i) for i in acceptable_convex)
-    else:
-        acceptable_convex = set([str(acceptable_convex)])
-
-    csv_file = open(filename, 'r')
+    csv_file = open(instancedata_filename, 'r')
     reader = csv.reader(csv_file, delimiter=';')
     headings = {column: ndx for ndx, column in enumerate(next(reader))}
     rows = [row for row in reader]
@@ -306,7 +311,7 @@ def filter_minlplib_instances(instancedata_download_dir=None,
     return cases
 
 
-def get_minlplib(download_dir=None, format='osil'):
+def get_minlplib(download_dir=None, format='osil', problem_name=None):
     """
     Download MINLPLib
 
@@ -317,20 +322,36 @@ def get_minlplib(download_dir=None, format='osil'):
         current_working_directory/minlplib/file_format/.
     format: str
         The file format requested. Options are ams, gms, lp, mod, nl, osil, and pip
+    problem_name: None or str
+        If problem_name is None, then the entire zip file will be downloaded 
+        and extracted (all problems with the specified format). If a single problem 
+        needs to be downloaded, then the name of the problem can be specified. 
+        This can be significantly faster than downloading all of the problems. 
+        However, individual problems are not compressed, so downloading multiple 
+        individual problems can quickly become expensive.
     """
     if download_dir is None:
         download_dir = os.path.join(os.getcwd(), 'minlplib', format)
-    if not os.path.exists(download_dir):
-        os.makedirs(download_dir)
 
-    downloader = download.FileDownloader()
-    zip_filename = os.path.join(download_dir, 'minlplib_'+format+'.zip')
-    downloader.set_destination_filename(zip_filename)
-    downloader.get_binary_file('http://www.minlplib.org/minlplib_'+format+'.zip')
-    zipper = ZipFile(zip_filename, 'r')
-    zipper.extractall(download_dir)
-    os.remove(zip_filename)
-    for i in os.listdir(os.path.join(download_dir, 'minlplib', format)):
-        os.rename(os.path.join(download_dir, 'minlplib', format, i), os.path.join(download_dir, i))
-    os.rmdir(os.path.join(download_dir, 'minlplib', format))
-    os.rmdir(os.path.join(download_dir, 'minlplib'))
+    if os.path.exists(download_dir):
+        raise ValueError('The specified download_dir already exists: ' + download_dir)
+    os.makedirs(download_dir)
+
+    if problem_name is None:
+        downloader = download.FileDownloader()
+        zip_filename = os.path.join(download_dir, 'minlplib_'+format+'.zip')
+        downloader.set_destination_filename(zip_filename)
+        downloader.get_binary_file('http://www.minlplib.org/minlplib_'+format+'.zip')
+        zipper = ZipFile(zip_filename, 'r')
+        zipper.extractall(download_dir)
+        os.remove(zip_filename)
+        for i in os.listdir(os.path.join(download_dir, 'minlplib', format)):
+            os.rename(os.path.join(download_dir, 'minlplib', format, i), os.path.join(download_dir, i))
+        os.rmdir(os.path.join(download_dir, 'minlplib', format))
+        os.rmdir(os.path.join(download_dir, 'minlplib'))
+    else:
+        downloader = download.FileDownloader()
+        target_filename = os.path.join(download_dir, problem_name + '.' + format)
+        downloader.set_destination_filename(target_filename)
+        downloader.get_binary_file('http://www.minlplib.org/'+format+'/'+problem_name+'.'+format)
+        
