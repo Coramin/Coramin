@@ -6,14 +6,17 @@ from pyomo.common.fileutils import this_file_dir
 
 class TestMINLPLibTools(unittest.TestCase):
     def test_get_minlplib_instancedata(self):
-        current_dir = this_file_dir()
-        coramin.third_party.get_minlplib_instancedata(target_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
+        current_dir = os.getcwd()
+        coramin.third_party.get_minlplib_instancedata()
         self.assertTrue(os.path.exists(os.path.join(current_dir, 'minlplib', 'instancedata.csv')))
+        cases = coramin.third_party.filter_minlplib_instances()
+        self.assertEqual(len(cases), 1704)
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
     def test_filter_minlplib_instances(self):
         current_dir = this_file_dir()
+        coramin.third_party.get_minlplib_instancedata(target_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_formats='osil',
@@ -140,5 +143,55 @@ class TestMINLPLibTools(unittest.TestCase):
             self.assertTrue(i.endswith('.osil'))
         for i in os.listdir(os.path.join(current_dir, 'minlplib', 'osil')):
             os.remove(os.path.join(current_dir, 'minlplib', 'osil', i))
+        os.rmdir(os.path.join(current_dir, 'minlplib', 'osil'))
+        os.rmdir(os.path.join(current_dir, 'minlplib'))
+
+    def test_get_minlplib_problem(self):
+        current_dir = os.getcwd()
+        coramin.third_party.get_minlplib(format='gms', problem_name='ex4_1_1')
+        files = os.listdir(os.path.join(current_dir, 'minlplib', 'gms'))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0], 'ex4_1_1.gms')
+        os.remove(os.path.join(current_dir, 'minlplib', 'gms', files[0]))
+        os.rmdir(os.path.join(current_dir, 'minlplib', 'gms'))
+        os.rmdir(os.path.join(current_dir, 'minlplib'))
+
+        
+class TestExceptions(unittest.TestCase):
+    def test_exceptions1(self):
+        current_dir = this_file_dir()
+        filename = os.path.join(current_dir, 'instancedata.csv')
+        f = open(filename, 'w')
+        f.write('blah')
+        f.close()
+
+        with self.assertRaises(ValueError):
+            coramin.third_party.get_minlplib_instancedata(target_filename=filename)
+
+        f = open(filename, 'r')
+        self.assertEqual(f.read(), 'blah')
+        os.remove(filename)
+
+    def test_exceptions2(self):
+        current_dir = this_file_dir()
+        filename = os.path.join(current_dir, 'minlplib', 'instancedata.csv')
+        coramin.third_party.get_minlplib_instancedata(target_filename=filename)
+
+        with self.assertRaises(ValueError):
+            cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=filename, acceptable_probtype='foo')
+
+        with self.assertRaises(ValueError):
+            cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=filename, acceptable_probtype=['QCQP', 'foo'])
+
+        os.remove(filename)
+        os.rmdir(os.path.dirname(filename))
+
+    def test_exceptions3(self):
+        current_dir = this_file_dir()
+        os.makedirs(os.path.join(current_dir, 'minlplib', 'osil'))
+        with self.assertRaises(ValueError):
+            coramin.third_party.get_minlplib(download_dir=os.path.join(current_dir, 'minlplib', 'osil'))
+        files = os.listdir(os.path.join(current_dir, 'minlplib', 'osil'))
+        self.assertEqual(len(files), 0)
         os.rmdir(os.path.join(current_dir, 'minlplib', 'osil'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))

@@ -112,13 +112,9 @@ def filter_minlplib_instances(instancedata_filename=None,
     """
     if instancedata_filename is None:
         instancedata_filename = os.path.join(os.getcwd(), 'minlplib', 'instancedata.csv')
-    instancedata_dirname = os.path.dirname(instancedata_filename)
-
-    if not os.path.exists(instancedata_dirname):
-        os.makedirs(instancedata_dirname)
 
     if not os.path.exists(instancedata_filename):
-        get_minlplib_instancedata(target_filename=instancedata_filename)
+        raise RuntimeError('{filename} does not exist. Please use get_minlplib_instancedata() first or specify the location of the MINLPLib instancedata.csv with the instancedata_filename argument.'.format(filename=instancedata_filename))
 
     acceptable_formats = _process_acceptable_arg(
         'acceptable_formats',
