@@ -1,18 +1,19 @@
 import coramin
 import unittest
 import os
+from pyomo.common.fileutils import this_file_dir
 
 
 class TestMINLPLibTools(unittest.TestCase):
     def test_get_minlplib_instancedata(self):
-        current_dir = os.path.abspath(os.path.dirname(__file__))
+        current_dir = this_file_dir()
         coramin.third_party.get_minlplib_instancedata(target_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         self.assertTrue(os.path.exists(os.path.join(current_dir, 'minlplib', 'instancedata.csv')))
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
     def test_filter_minlplib_instances(self):
-        current_dir = os.path.abspath(os.path.dirname(__file__))
+        current_dir = this_file_dir()
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_formats='osil',
@@ -131,7 +132,7 @@ class TestMINLPLibTools(unittest.TestCase):
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
     def test_get_minlplib(self):
-        current_dir = os.path.abspath(os.path.dirname(__file__))
+        current_dir = this_file_dir()
         coramin.third_party.get_minlplib(download_dir=os.path.join(current_dir, 'minlplib', 'osil'))
         files = os.listdir(os.path.join(current_dir, 'minlplib', 'osil'))
         self.assertEqual(len(files), 1703)
