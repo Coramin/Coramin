@@ -57,6 +57,20 @@ def _process_acceptable_arg(name, arg, default):
     raise ValueError('unrecognized type for %s: %s' % (name, type(arg)))
 
 
+def _check_int_arg(arg, _min, _max, arg_name, case_name):
+    if arg < _min or arg > _max:
+        logger.debug('excluding {case_name} due to {arg_name}'.format(case_name=case_name, arg_name=arg_name))
+        return True
+    return False
+
+
+def _check_acceptable(arg, acceptable_set, arg_name, case_name):
+    if arg not in acceptable_set:
+        logger.debug('excluding {case_name} due to {arg_name}'.format(case_name=case_name, arg_name=arg_name))
+        return True
+    return False
+
+
 def filter_minlplib_instances(instancedata_filename=None,
                               min_nvars=0, max_nvars=math.inf,
                               min_nbinvars=0, max_nbinvars=math.inf,
@@ -146,11 +160,98 @@ def filter_minlplib_instances(instancedata_filename=None,
         set(['True', 'False', ''])
         )
 
-    csv_file = open(instancedata_filename, 'r')
-    reader = csv.reader(csv_file, delimiter=';')
-    headings = {column: ndx for ndx, column in enumerate(next(reader))}
-    rows = [row for row in reader]
-    csv_file.close()
+    int_arg_name_list = [
+        'nvars',
+        'nbinvars',
+        'nintvars',
+        'nnlvars',
+        'nnlbinvars',
+        'nnlintvars',
+        'nobjnz',
+        'nobjnlnz',
+        'ncons',
+        'nlincons',
+        'nquadcons',
+        'npolynomcons',
+        'nsignomcons',
+        'ngennlcons',
+        'njacobiannz',
+        'njacobiannlnz',
+        'nlaghessiannz',
+        'nlaghessiandiagnz',
+        'nsemi',
+        'nnlsemi',
+        'nsos1',
+        'nsos2',
+    ]
+    min_list = [
+        min_nvars,
+        min_nbinvars,
+        min_nintvars,
+        min_nnlvars,
+        min_nnlbinvars,
+        min_nnlintvars,
+        min_nobjnz,
+        min_nobjnlnz,
+        min_ncons,
+        min_nlincons,
+        min_nquadcons,
+        min_npolynomcons,
+        min_nsignomcons,
+        min_ngennlcons,
+        min_njacobiannz,
+        min_njacobiannlnz,
+        min_nlaghessiannz,
+        min_nlaghessiandiagnz,
+        min_nsemi,
+        min_nnlsemi,
+        min_nsos1,
+        min_nsos2,
+    ]
+    max_list = [
+        max_nvars,
+        max_nbinvars,
+        max_nintvars,
+        max_nnlvars,
+        max_nnlbinvars,
+        max_nnlintvars,
+        max_nobjnz,
+        max_nobjnlnz,
+        max_ncons,
+        max_nlincons,
+        max_nquadcons,
+        max_npolynomcons,
+        max_nsignomcons,
+        max_ngennlcons,
+        max_njacobiannz,
+        max_njacobiannlnz,
+        max_nlaghessiannz,
+        max_nlaghessiandiagnz,
+        max_nsemi,
+        max_nnlsemi,
+        max_nsos1,
+        max_nsos2,
+    ]
+
+    acceptable_arg_name_list = [
+        'probtype',
+        'objtype',
+        'objcurvature',
+        'conscurvature',
+        'convex'
+    ]
+    acceptable_set_list = [
+        acceptable_probtype,
+        acceptable_objtype,
+        acceptable_objcurvature,
+        acceptable_conscurvature,
+        acceptable_convex
+    ]
+
+    with open(instancedata_filename, 'r') as csv_file:
+        reader = csv.reader(csv_file, delimiter=';')
+        headings = {column: ndx for ndx, column in enumerate(next(reader))}
+        rows = [row for row in reader]
 
     cases = list()
     for ndx, row in enumerate(rows):
@@ -167,143 +268,33 @@ def filter_minlplib_instances(instancedata_filename=None,
         available_formats = available_formats.split(',')
         available_formats = set(available_formats)
 
+        should_continue = False
+
         if len(acceptable_formats.intersection(available_formats)) == 0:
             logger.debug('excluding {case} due to available_formats'.format(case=case_name))
-            continue
+            should_continue = True
 
-        probtype = row[headings['probtype']]
-        if probtype not in acceptable_probtype:
-            logger.debug('excluding {case} due to acceptable_probtype'.format(case=case_name))
-            continue
+        for ndx, acceptable_arg_name in enumerate(acceptable_arg_name_list):
+            acceptable_set = acceptable_set_list[ndx]
+            arg = row[headings[acceptable_arg_name]]
+            if _check_acceptable(arg=arg,
+                                 acceptable_set=acceptable_set,
+                                 arg_name=acceptable_arg_name,
+                                 case_name=case_name):
+                should_continue = True
 
-        objtype = row[headings['objtype']]
-        if objtype not in acceptable_objtype:
-            logger.debug('excluding {case} due to acceptable_objtype'.format(case=case_name))
-            continue
+        for ndx, arg_name in enumerate(int_arg_name_list):
+            _min = min_list[ndx]
+            _max = max_list[ndx]
+            arg = int(row[headings[arg_name]])
+            if _check_int_arg(arg=arg,
+                              _min=_min,
+                              _max=_max,
+                              arg_name=arg_name,
+                              case_name=case_name):
+                should_continue = True
 
-        objcurvature = row[headings['objcurvature']]
-        if objcurvature not in acceptable_objcurvature:
-            logger.debug('excluding {case} due to acceptable_objcurvature'.format(case=case_name))
-            continue
-
-        conscurvature = row[headings['conscurvature']]
-        if conscurvature not in acceptable_conscurvature:
-            logger.debug('excluding {case} due to acceptable_conscurvature'.format(case=case_name))
-            continue
-
-        convex = row[headings['convex']]
-        if convex not in acceptable_convex:
-            logger.debug('excluding {case} due to acceptable_convex'.format(case=case_name))
-            continue
-
-        nvars = int(row[headings['nvars']])
-        if nvars < min_nvars or nvars > max_nvars:
-            logger.debug('excluding {case} due to nvars'.format(case=case_name))
-            continue
-
-        nbinvars = int(row[headings['nbinvars']])
-        if nbinvars < min_nbinvars or nbinvars > max_nbinvars:
-            logger.debug('excluding {case} due to nbinvars'.format(case=case_name))
-            continue
-
-        nintvars = int(row[headings['nintvars']])
-        if nintvars < min_nintvars or nintvars > max_nintvars:
-            logger.debug('excluding {case} due to nintvars'.format(case=case_name))
-            continue
-
-        nnlvars = int(row[headings['nnlvars']])
-        if nnlvars < min_nnlvars or nnlvars > max_nnlvars:
-            logger.debug('excluding {case} due to nnlvars'.format(case=case_name))
-            continue
-
-        nnlbinvars = int(row[headings['nnlbinvars']])
-        if nnlbinvars < min_nnlbinvars or nnlbinvars > max_nnlbinvars:
-            logger.debug('excluding {case} due to nnlbinvars'.format(case=case_name))
-            continue
-
-        nnlintvars = int(row[headings['nnlintvars']])
-        if nnlintvars < min_nnlintvars or nnlintvars > max_nnlintvars:
-            logger.debug('excluding {case} due to nnlintvars'.format(case=case_name))
-            continue
-
-        nobjnz = int(row[headings['nobjnz']])
-        if nobjnz < min_nobjnz or nobjnz > max_nobjnz:
-            logger.debug('excluding {case} due to nobjnz'.format(case=case_name))
-            continue
-
-        nobjnlnz = int(row[headings['nobjnlnz']])
-        if nobjnlnz < min_nobjnlnz or nobjnlnz > max_nobjnlnz:
-            logger.debug('excluding {case} due to nobjnlnz'.format(case=case_name))
-            continue
-
-        ncons = int(row[headings['ncons']])
-        if ncons < min_ncons or ncons > max_ncons:
-            logger.debug('excluding {case} due to ncons'.format(case=case_name))
-            continue
-
-        nlincons = int(row[headings['nlincons']])
-        if nlincons < min_nlincons or nlincons > max_nlincons:
-            logger.debug('excluding {case} due to nlincons'.format(case=case_name))
-            continue
-
-        nquadcons = int(row[headings['nquadcons']])
-        if nquadcons < min_nquadcons or nquadcons > max_nquadcons:
-            logger.debug('excluding {case} due to nquadcons'.format(case=case_name))
-            continue
-
-        npolynomcons = int(row[headings['npolynomcons']])
-        if npolynomcons < min_npolynomcons or npolynomcons > max_npolynomcons:
-            logger.debug('excluding {case} due to npolynomcons'.format(case=case_name))
-            continue
-
-        nsignomcons = int(row[headings['nsignomcons']])
-        if nsignomcons < min_nsignomcons or nsignomcons > max_nsignomcons:
-            logger.debug('excluding {case} due to nsignomcons'.format(case=case_name))
-            continue
-
-        ngennlcons = int(row[headings['ngennlcons']])
-        if ngennlcons < min_ngennlcons or ngennlcons > max_ngennlcons:
-            logger.debug('excluding {case} due to ngennlcons'.format(case=case_name))
-            continue
-
-        njacobiannz = int(row[headings['njacobiannz']])
-        if njacobiannz < min_njacobiannz or njacobiannz > max_njacobiannz:
-            logger.debug('excluding {case} due to njacobiannz'.format(case=case_name))
-            continue
-
-        njacobiannlnz = int(row[headings['njacobiannlnz']])
-        if njacobiannlnz < min_njacobiannlnz or njacobiannlnz > max_njacobiannlnz:
-            logger.debug('excluding {case} due to njacobiannlnz'.format(case=case_name))
-            continue
-
-        nlaghessiannz = int(row[headings['nlaghessiannz']])
-        if nlaghessiannz < min_nlaghessiannz or nlaghessiannz > max_nlaghessiannz:
-            logger.debug('excluding {case} due to nlaghessiannz'.format(case=case_name))
-            continue
-
-        nlaghessiandiagnz = int(row[headings['nlaghessiandiagnz']])
-        if nlaghessiandiagnz < min_nlaghessiandiagnz or nlaghessiandiagnz > max_nlaghessiandiagnz:
-            logger.debug('excluding {case} due to nlaghessiandiagnz'.format(case=case_name))
-            continue
-
-        nsemi = int(row[headings['nsemi']])
-        if nsemi < min_nsemi or nsemi > max_nsemi:
-            logger.debug('excluding {case} due to nsemi'.format(case=case_name))
-            continue
-
-        nnlsemi = int(row[headings['nnlsemi']])
-        if nnlsemi < min_nnlsemi or nnlsemi > max_nnlsemi:
-            logger.debug('excluding {case} due to nnlsemi'.format(case=case_name))
-            continue
-
-        nsos1 = int(row[headings['nsos1']])
-        if nsos1 < min_nsos1 or nsos1 > max_nsos1:
-            logger.debug('excluding {case} due to nsos1'.format(case=case_name))
-            continue
-
-        nsos2 = int(row[headings['nsos2']])
-        if nsos2 < min_nsos2 or nsos2 > max_nsos2:
-            logger.debug('excluding {case} due to nsos2'.format(case=case_name))
+        if should_continue:
             continue
 
         cases.append(case_name)
