@@ -105,7 +105,7 @@ def filter_minlplib_instances(instancedata_filename=None,
     instancedata.csv from MINLPLib and the conditions specified
     through the function arguments. The function argument names
     correspond to column headings from instancedata.csv. The 
-    arguments starting with min or max require integer inputs. 
+    arguments starting with min or max require int or float inputs. 
     The arguments starting with acceptable require either a 
     string or an iterable of strings. See the MINLPLib documentation 
     for acceptable values.
