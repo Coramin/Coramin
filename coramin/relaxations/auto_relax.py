@@ -392,6 +392,13 @@ def _relax_leaf_to_root_NegationExpression(node, values, aux_var_map, degree_map
     return res
 
 
+def _relax_leaf_to_root_sqrt(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    return _relax_leaf_to_root_PowExpression(node=node, values=(values[0], 0.5), aux_var_map=aux_var_map,
+                                             degree_map=degree_map, parent_block=parent_block,
+                                             relaxation_side_map=relaxation_side_map, counter=counter)
+
+
+
 def _relax_leaf_to_root_exp(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
     arg = values[0]
     degree = degree_map[arg]
@@ -564,6 +571,7 @@ _unary_leaf_to_root_map['log10'] = _relax_leaf_to_root_log10
 _unary_leaf_to_root_map['sin'] = _relax_leaf_to_root_sin
 _unary_leaf_to_root_map['cos'] = _relax_leaf_to_root_cos
 _unary_leaf_to_root_map['atan'] = _relax_leaf_to_root_arctan
+_unary_leaf_to_root_map['sqrt'] = _relax_leaf_to_root_sqrt
 
 
 def _relax_leaf_to_root_UnaryFunctionExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
@@ -692,6 +700,11 @@ def _relax_root_to_leaf_PowExpression(node, relaxation_side_map):
     relaxation_side_map[arg2] = RelaxationSide.BOTH
 
 
+def _relax_root_to_leaf_sqrt(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = relaxation_side_map[node]
+
+
 def _relax_root_to_leaf_exp(node, relaxation_side_map):
     arg = node.args[0]
     relaxation_side_map[arg] = relaxation_side_map[node]
@@ -729,6 +742,7 @@ _unary_root_to_leaf_map['log10'] = _relax_root_to_leaf_log10
 _unary_root_to_leaf_map['sin'] = _relax_root_to_leaf_sin
 _unary_root_to_leaf_map['cos'] = _relax_root_to_leaf_cos
 _unary_root_to_leaf_map['atan'] = _relax_root_to_leaf_arctan
+_unary_root_to_leaf_map['sqrt'] = _relax_root_to_leaf_sqrt
 
 
 def _relax_root_to_leaf_UnaryFunctionExpression(node, relaxation_side_map):
