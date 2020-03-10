@@ -393,10 +393,15 @@ def _relax_leaf_to_root_NegationExpression(node, values, aux_var_map, degree_map
 
 
 def _relax_leaf_to_root_sqrt(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
-    return _relax_leaf_to_root_PowExpression(node=node, values=(values[0], 0.5), aux_var_map=aux_var_map,
-                                             degree_map=degree_map, parent_block=parent_block,
-                                             relaxation_side_map=relaxation_side_map, counter=counter)
-
+    arg = values[0]
+    _new_relaxation_side_map = ComponentMap()
+    _reformulated = arg**0.5
+    _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
+    res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
+                      relaxation_side_map=_new_relaxation_side_map, counter=counter,
+                      degree_map=degree_map)
+    degree_map[res] = 1
+    return res
 
 
 def _relax_leaf_to_root_exp(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
