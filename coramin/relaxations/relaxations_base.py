@@ -446,7 +446,7 @@ class BasePWRelaxationData(BaseRelaxationData):
         """
         Save the current partitioning.
         """
-        self.save_partitions.append(self._partitions)
+        self._saved_partitions.append(self._partitions)
 
     def clear_partitions(self):
         """
