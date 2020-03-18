@@ -300,6 +300,12 @@ class BaseRelaxationData(_BlockData):
         self._saved_oa_points.append(self._oa_points)
         self.clear_oa_points()
 
+    def save_oa_points(self):
+        """
+        Save the current list of OA points for later use (this does not clear the current set of OA points).
+        """
+        self._saved_oa_points.append(self._oa_points)
+
     def clear_oa_points(self):
         """
         Delete any existing OA points.
@@ -435,6 +441,12 @@ class BasePWRelaxationData(BaseRelaxationData):
         """
         self._saved_partitions.append(self._partitions)
         self.clear_partitions()
+
+    def save_partitions(self):
+        """
+        Save the current partitioning.
+        """
+        self.save_partitions.append(self._partitions)
 
     def clear_partitions(self):
         """
