@@ -209,14 +209,14 @@ def _relax_leaf_to_root_DivisionExpression(node, values, aux_var_map, degree_map
         relaxation_side = relaxation_side_map[node]
         arg2_lb, arg2_ub = compute_float_bounds_on_expr(arg2)
         if arg2_lb >= 0:
-            pass
-        elif arg2_ub <= 0:
             if relaxation_side == RelaxationSide.UNDER:
                 relaxation_side = RelaxationSide.OVER
             elif relaxation_side == RelaxationSide.OVER:
                 relaxation_side = RelaxationSide.UNDER
             else:
                 assert relaxation_side == RelaxationSide.BOTH
+        elif arg2_ub <= 0:
+            pass
         else:
             relaxation_side = RelaxationSide.BOTH
         relaxation = PWMcCormickRelaxation()
