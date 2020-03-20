@@ -236,12 +236,12 @@ class _Tree(object):
         return component_map
 
     def log(self, prefix=''):
-        logger.log(35, prefix + '# Edges: {0}'.format(len(self.edges_between_children)))
+        logger.debug(prefix + '# Edges: {0}'.format(len(self.edges_between_children)))
         for _child in self.children:
             if isinstance(_child, _Tree):
                 _child.log(prefix=prefix + '  ')
             else:
-                logger.log(35, prefix + '  Leaf: # NNZ: {0}'.format(_child.number_of_edges()))
+                logger.debug(prefix + '  Leaf: # NNZ: {0}'.format(_child.number_of_edges()))
 
 
 def _is_dominated(ndx, num_cuts, balance, num_cuts_array, balance_array):
@@ -561,78 +561,78 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
         An enum member from DecompositionStatus
     """
     graph = convert_pyomo_model_to_bipartite_graph(model)
-    logger.info('converted pyomo model to bipartite graph')
+    logger.debug('converted pyomo model to bipartite graph')
     original_nnz = graph.number_of_edges()
     if limit_num_stages:
         max_stages = round(math.log10(original_nnz))
     else:
         max_stages = math.inf
-    logger.log(35, 'NNZ in original graph: {0}'.format(original_nnz))
-    logger.log(35, 'maximum number of stages: {0}'.format(max_stages))
+    logger.debug('NNZ in original graph: {0}'.format(original_nnz))
+    logger.debug('maximum number of stages: {0}'.format(max_stages))
     if max_leaf_nnz is None:
         max_leaf_nnz = 0.1 * original_nnz
 
     if original_nnz <= max_leaf_nnz or num_cons_in_graph(graph) <= 1:
         if original_nnz <= max_leaf_nnz:
-            logger.info('too few NNZ in original graph; not decomposing')
+            logger.debug('too few NNZ in original graph; not decomposing')
         else:
-            logger.info('Cannot decompose graph with less than 2 constraints.')
+            logger.debug('Cannot decompose graph with less than 2 constraints.')
         new_model = TreeBlock(concrete=True)
         new_model.setup(children_keys=list())
         component_map = build_pyomo_model_from_graph(graph=graph, block=new_model)
         termination_reason = DecompositionStatus.problem_too_small
-        logger.info('done building pyomo model from graph')
+        logger.debug('done building pyomo model from graph')
     else:
         root_tree, partitioning_ratio = split_metis(graph=graph)
-        logger.log(35, 'partitioned original tree; partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
+        logger.debug('partitioned original tree; partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
         if partitioning_ratio < min_partition_ratio:
-            logger.log(35, 'obtained bad partitioning ratio; abandoning partition')
+            logger.debug('obtained bad partitioning ratio; abandoning partition')
             new_model = TreeBlock(concrete=True)
             new_model.setup(children_keys=list())
             component_map = build_pyomo_model_from_graph(graph=graph, block=new_model)
             termination_reason = DecompositionStatus.bad_ratio
-            logger.info('done building pyomo model from graph')
+            logger.debug('done building pyomo model from graph')
         else:
             parent = root_tree
 
             termination_reason = DecompositionStatus.normal
             needs_split = list()
             for child in parent.children:
-                logger.info('number of NNZ in child: {0}'.format(child.number_of_edges()))
+                logger.debug('number of NNZ in child: {0}'.format(child.number_of_edges()))
                 if child.number_of_edges() > max_leaf_nnz and num_cons_in_graph(child) > 1:
                     needs_split.append((child, parent, 1))
 
             while len(needs_split) > 0:
-                logger.info('needs_split: {0}'.format(str(needs_split)))
+                logger.debug('needs_split: {0}'.format(str(needs_split)))
                 _graph, _parent, _stage = needs_split.pop()
                 try:
                     if _stage + 1 >= max_stages:
-                        logger.log(35, 'stage {0}: not partitiong graph with {1} NNZ due to the max stages rule;'.format(_stage, _graph.number_of_edges()))
+                        logger.debug('stage {0}: not partitiong graph with {1} NNZ due to the max stages rule;'.format(_stage, _graph.number_of_edges()))
                         continue
-                    logger.log(35, 'stage {0}: partitioning graph with {1} NNZ'.format(_stage, _graph.number_of_edges()))
+                    logger.debug('stage {0}: partitioning graph with {1} NNZ'.format(_stage, _graph.number_of_edges()))
                     sub_tree, partitioning_ratio = split_metis(graph=_graph)
-                    logger.log(35, 'partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
+                    logger.debug('partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
                     if partitioning_ratio > min_partition_ratio:
-                        logger.info('partitioned {0}'.format(str(_graph)))
+                        logger.debug('partitioned {0}'.format(str(_graph)))
                         _parent.children.discard(_graph)
                         _parent.children.add(sub_tree)
 
                         for child in sub_tree.children:
-                            logger.info('number of NNZ in child: {0}'.format(child.number_of_edges()))
+                            logger.debug('number of NNZ in child: {0}'.format(child.number_of_edges()))
                             if child.number_of_edges() > max_leaf_nnz and num_cons_in_graph(child) > 1:
                                 needs_split.append((child, sub_tree, _stage+1))
                     else:
-                        logger.log(35, 'obtained bad partitioning ratio; abandoning partition')
+                        logger.debug('obtained bad partitioning ratio; abandoning partition')
                 except DecompositionError:
                     termination_reason = DecompositionStatus.error
                     logger.error('failed to partition graph with {0} NNZ'.format(_graph.number_of_edges()))
 
-            logger.log(35, 'Tree Info:')
+            logger.debug('Tree Info:')
             root_tree.log()
 
             new_model = TreeBlock(concrete=True)
             component_map = root_tree.build_pyomo_model(block=new_model)
-            logger.info('done building pyomo model from tree')
+            logger.debug('done building pyomo model from tree')
 
     obj = get_objective(model)
     if obj is not None:
@@ -640,9 +640,9 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
         new_model.objective = pe.Objective(expr=replace_expressions(obj.expr, substitution_map=var_map,
                                                                     remove_named_expressions=True),
                                            sense=obj.sense)
-        logger.info('done adding objective to new model')
+        logger.debug('done adding objective to new model')
     else:
-        logger.info('No objective was found to add to the new model')
+        logger.debug('No objective was found to add to the new model')
 
     return new_model, component_map, termination_reason
 
@@ -911,7 +911,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             break
         
         stage_blocks = list(relaxation.stage_blocks(stage))
-        logger.info('DBT stage {0} of {1} with {1} blocks'.format(stage, num_stages, len(stage_blocks)))
+        logger.debug('DBT stage {0} of {1} with {1} blocks'.format(stage, num_stages, len(stage_blocks)))
 
         for block_ndx, block in enumerate(stage_blocks):
             if time.time() - t0 >= time_limit:
@@ -934,7 +934,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             vars_to_tighten = vars_to_tighten_by_block[block]
 
             if filter_method == FilterMethod.AGGRESSIVE:
-                logger.info('starting filter')
+                logger.debug('starting filter')
                 res = aggressive_filter(candidate_variables=vars_to_tighten, relaxation=block_to_tighten_with,
                                         solver=solver, tolerance=1e-4, objective_bound=_ub)
                 lb_vars, ub_vars = res
@@ -942,7 +942,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                     dbt_info.num_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
                 else:
                     dbt_info.num_coupling_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
-                logger.info('done filtering')
+                logger.debug('done filtering')
             else:
                 lb_vars = list(vars_to_tighten)
                 ub_vars = list(vars_to_tighten)
@@ -962,7 +962,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             _update_var_bounds(varlist=lb_vars, new_lower_bounds=lower,
                                new_upper_bounds=upper, feasibility_tol=feasibility_tol)
 
-            logger.info('done tightening lbs')
+            logger.debug('done tightening lbs')
 
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
@@ -979,7 +979,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             _update_var_bounds(varlist=ub_vars, new_lower_bounds=lower,
                                new_upper_bounds=upper, feasibility_tol=feasibility_tol)
 
-            logger.info('done tightening ubs')
+            logger.debug('done tightening ubs')
 
             if not block.is_leaf():
                 for c in block.linking_constraints.values():
