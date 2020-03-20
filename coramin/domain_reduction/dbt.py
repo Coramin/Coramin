@@ -529,6 +529,13 @@ def num_cons_in_graph(graph, include_rels=True):
     return res
 
 
+class DecompositionStatus(enum.Enum):
+    normal = 0  # the model was successfullay decomposed at least once and no exception was raised
+    error = 1  # an exception was raised
+    bad_ratio = 2  # the model could not be decomposed at all because the min_parition_ratio was not satisfied
+    problem_too_small = 3  # the model could not be decomposed at all because the number of jacobian nonzeros in the original problem was less than max_leaf_nnz
+
+
 def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num_stages=True):
     """
     Parameters
@@ -550,6 +557,8 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
         The decomposed model
     component_map: pe.ComponentMap
         A ComponentMap mapping varialbes and constraints in model to those in new_model
+    termination_reason: DecompositionStatus
+        An enum member from DecompositionStatus
     """
     graph = convert_pyomo_model_to_bipartite_graph(model)
     logger.debug('converted pyomo model to bipartite graph')
@@ -571,6 +580,7 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
         new_model = TreeBlock(concrete=True)
         new_model.setup(children_keys=list())
         component_map = build_pyomo_model_from_graph(graph=graph, block=new_model)
+        termination_reason = DecompositionStatus.problem_too_small
         logger.debug('done building pyomo model from graph')
     else:
         root_tree, partitioning_ratio = split_metis(graph=graph)
@@ -580,10 +590,12 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
             new_model = TreeBlock(concrete=True)
             new_model.setup(children_keys=list())
             component_map = build_pyomo_model_from_graph(graph=graph, block=new_model)
+            termination_reason = DecompositionStatus.bad_ratio
             logger.debug('done building pyomo model from graph')
         else:
             parent = root_tree
 
+            termination_reason = DecompositionStatus.normal
             needs_split = list()
             for child in parent.children:
                 logger.debug('number of NNZ in child: {0}'.format(child.number_of_edges()))
@@ -612,6 +624,7 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
                     else:
                         logger.debug('obtained bad partitioning ratio; abandoning partition')
                 except DecompositionError:
+                    termination_reason = DecompositionStatus.error
                     logger.error('failed to partition graph with {0} NNZ'.format(_graph.number_of_edges()))
 
             logger.debug('Tree Info:')
@@ -631,7 +644,7 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.5, limit_num
     else:
         logger.debug('No objective was found to add to the new model')
 
-    return new_model, component_map
+    return new_model, component_map, termination_reason
 
 
 def collect_vars_to_tighten_from_graph(graph):
