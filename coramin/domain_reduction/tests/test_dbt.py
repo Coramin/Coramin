@@ -429,10 +429,14 @@ class TestDecompose(unittest.TestCase):
                                               use_fbbt=True,
                                               fbbt_options={'deactivate_satisfied_constraints': True,
                                                             'max_iter': 2})
-        decomposed_m, component_map = decompose_model(model=relaxed_m,
-                                                      max_leaf_nnz=1000,
-                                                      min_partition_ratio=1.5,
-                                                      limit_num_stages=True)
+        (decomposed_m,
+         component_map,
+         termination_reason) = decompose_model(model=relaxed_m,
+                                               max_leaf_nnz=1000,
+                                               min_partition_ratio=1.5,
+                                               limit_num_stages=True)
+        self.assertIn(termination_reason, {coramin.domain_reduction.dbt.DecompositionStatus.normal,
+                                           coramin.domain_reduction.dbt.DecompositionStatus.problem_too_small})
         for r in coramin.relaxations.relaxation_data_objects(block=relaxed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
