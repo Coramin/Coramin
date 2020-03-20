@@ -163,7 +163,7 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
                 if should_filter:
                     num_filtered += 1
                     _set.remove(v)
-            logger.info('filtered {0} vars on iter {1}'.format(num_filtered, _iter))
+            logger.debug('filtered {0} vars on iter {1}'.format(num_filtered, _iter))
 
             if len(_set) == 0:
                 break
