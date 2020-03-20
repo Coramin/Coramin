@@ -25,7 +25,7 @@ relaxation, scaled_md2 = create_polar_acopf_relaxation(md)
 
 # perform decomposition
 print('Decomposing relaxation')
-relaxation, component_map = coramin.domain_reduction.decompose_model(relaxation, max_leaf_nnz=1000)
+relaxation, component_map, termination_reason = coramin.domain_reduction.decompose_model(relaxation, max_leaf_nnz=1000)
 
 # Add more outer approximation points for the second order cone constraints
 print('Adding extra outer-approximation points for SOC constraints')
