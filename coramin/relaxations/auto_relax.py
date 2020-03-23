@@ -85,29 +85,38 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
     # aux2 = x*y
     #
 
-    if arg1.__class__ == numeric_expr.MonomialTermExpression:
-        coef1, arg1 = arg1.args
-    else:
-        coef1 = 1
-    if arg2.__class__ == numeric_expr.MonomialTermExpression:
-        coef2, arg2 = arg2.args
-    else:
-        coef2 = 1
-    coef = coef1 * coef2
+    if arg1.__class__ == numeric_expr.MonomialTermExpression or arg2.__class__ == numeric_expr.MonomialTermExpression:
+        if arg1.__class__ == numeric_expr.MonomialTermExpression:
+            coef1, arg1 = arg1.args
+        else:
+            coef1 = 1
+        if arg2.__class__ == numeric_expr.MonomialTermExpression:
+            coef2, arg2 = arg2.args
+        else:
+            coef2 = 1
+        coef = coef1 * coef2
+        _new_relaxation_side_map = ComponentMap()
+        _reformulated = coef * (arg1 * arg2)
+        _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
+        res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
+                          relaxation_side_map=_new_relaxation_side_map, counter=counter, degree_map=degree_map)
+        degree_map[res] = 1
+        return res
+
     degree_1 = degree_map[arg1]
     degree_2 = degree_map[arg2]
     if degree_1 == 0:
-        res = coef * arg1 * arg2
+        res = arg1 * arg2
         degree_map[res] = degree_2
         return res
     elif degree_2 == 0:
-        res = coef * arg2 * arg1
+        res = arg2 * arg1
         degree_map[res] = degree_1
         return res
     elif arg1 is arg2:
         # reformulate arg1 * arg2 as arg1**2
         _new_relaxation_side_map = ComponentMap()
-        _reformulated = coef * arg1**2
+        _reformulated = arg1**2
         _new_relaxation_side_map[_reformulated] = relaxation_side_map[node]
         res = _relax_expr(expr=_reformulated, aux_var_map=aux_var_map, parent_block=parent_block,
                           relaxation_side_map=_new_relaxation_side_map, counter=counter, degree_map=degree_map)
@@ -121,8 +130,7 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         relaxation_side = relaxation_side_map[node]
         if relaxation_side != relaxation.relaxation_side:
             relaxation.relaxation_side = RelaxationSide.BOTH
-        res = coef * _aux_var
-        degree_map[_aux_var] = 1
+        res = _aux_var
         degree_map[res] = 1
         return res
     else:
@@ -135,8 +143,7 @@ def _relax_leaf_to_root_ProductExpression(node, values, aux_var_map, degree_map,
         aux_var_map[id(arg1), id(arg2), 'mul'] = (_aux_var, relaxation)
         setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
         counter.increment()
-        res = coef * _aux_var
-        degree_map[_aux_var] = 1
+        res = _aux_var
         degree_map[res] = 1
         return res
 
