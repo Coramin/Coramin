@@ -765,7 +765,7 @@ class DBTInfo(object):
         self.num_vars_filtered = None
 
 
-def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol):
+def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol, safety_tol):
     for ndx, v in enumerate(varlist):
         new_lb = new_lower_bounds[ndx]
         new_ub = new_upper_bounds[ndx]
@@ -780,6 +780,9 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
             orig_lb = -math.inf
         if orig_ub is None:
             orig_ub = math.inf
+
+        new_lb -= safety_tol
+        new_ub += safety_tol
 
         if new_lb > new_ub:
             msg = 'variable ub is less than lb; var: {0}; lb: {1}; ub: {2}'.format(str(v), new_lb, new_ub)
@@ -805,9 +808,9 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
 def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                 objective_bound=None, with_progress_bar=False, parallel=False,
-                vars_to_tighten_by_block=None, feasibility_tol=0):
-    """
-    This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
+                vars_to_tighten_by_block=None, feasibility_tol=0,
+                safety_tol=0):
+    """This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
 
     Parameters
     ----------
@@ -857,10 +860,17 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         upper bound, but by less than feasibility_tol, then the computed lower bound is decreased by
         feasibility tol (but will not be set lower than the original lower bound) and the computed upper
         bound is increased by feasibility_tol (but will not be set higher than the original upper bound).
+    safety_tol: float
+        Computed lower bounds will be decreased by safety_tol and
+        computed upper bounds will be increased by safety_tol. The
+        purpose of this is to account for numerical error in the
+        solution of the OBBT problems and to avoid cutting off valid
+        portions of the feasible region.
 
     Returns
     -------
     dbt_info: DBTInfo
+
     """
     t0 = time.time()
     
@@ -960,7 +970,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
 
             _update_var_bounds(varlist=lb_vars, new_lower_bounds=lower,
-                               new_upper_bounds=upper, feasibility_tol=feasibility_tol)
+                               new_upper_bounds=upper, feasibility_tol=feasibility_tol,
+                               safety_tol=safety_tol)
 
             logger.debug('done tightening lbs')
 
@@ -977,7 +988,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
 
             _update_var_bounds(varlist=ub_vars, new_lower_bounds=lower,
-                               new_upper_bounds=upper, feasibility_tol=feasibility_tol)
+                               new_upper_bounds=upper, feasibility_tol=feasibility_tol,
+                               safety_tol=safety_tol)
 
             logger.debug('done tightening ubs')
 
@@ -1028,7 +1040,7 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                                       filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                                       objective_bound=None, with_progress_bar=False, parallel=False,
                                       vars_to_tighten_by_block=None, feasibility_tol=0,
-                                      integer_tol=1e-4):
+                                      integer_tol=1e-4, safety_tol=0):
     """
     This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
     However, all OBBT problems are solved with the binary and integer variables relaxed.
@@ -1085,6 +1097,12 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
         If the lower bound computed for an integer variable is greater than the largest integer less than
         the computed lower bound by more than integer_tol, then the lower bound is increased to the smallest
         integer greater than the computed lower bound. Similar logic holds for the upper bound.
+    safety_tol: float
+        Computed lower bounds will be decreased by safety_tol and
+        computed upper bounds will be increased by safety_tol. The
+        purpose of this is to account for numerical error in the
+        solution of the OBBT problems and to avoid cutting off valid
+        portions of the feasible region.
 
     Returns
     -------
@@ -1101,7 +1119,8 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                            with_progress_bar=with_progress_bar,
                            parallel=parallel,
                            vars_to_tighten_by_block=vars_to_tighten_by_block,
-                           feasibility_tol=feasibility_tol)
+                           feasibility_tol=feasibility_tol,
+                           safety_tol=safety_tol)
 
     pop_integers(relaxed_binary_vars, relaxed_integer_vars)
 
