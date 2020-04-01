@@ -765,7 +765,7 @@ class DBTInfo(object):
         self.num_vars_filtered = None
 
 
-def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol, safety_tol):
+def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol, safety_tol, max_acceptable_bound):
     for ndx, v in enumerate(varlist):
         new_lb = new_lower_bounds[ndx]
         new_ub = new_upper_bounds[ndx]
@@ -783,6 +783,11 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
 
         new_lb -= safety_tol
         new_ub += safety_tol
+
+        if new_lb < -max_acceptable_bound:
+            new_lb = -math.inf
+        if new_ub > max_acceptable_bound:
+            new_ub = math.inf
 
         if new_lb > new_ub:
             msg = 'variable ub is less than lb; var: {0}; lb: {1}; ub: {2}'.format(str(v), new_lb, new_ub)
@@ -809,7 +814,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                 objective_bound=None, with_progress_bar=False, parallel=False,
                 vars_to_tighten_by_block=None, feasibility_tol=0,
-                safety_tol=0):
+                safety_tol=0, max_acceptable_bound=math.inf):
     """This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
 
     Parameters
@@ -866,6 +871,10 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         purpose of this is to account for numerical error in the
         solution of the OBBT problems and to avoid cutting off valid
         portions of the feasible region.
+    max_acceptable_bound: float
+        If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
+        computed bound will be rejected. If the lower bound computed for a variable is less than 
+        -max_acceptable_bound, then the computed bound will be rejected.
 
     Returns
     -------
@@ -971,7 +980,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             _update_var_bounds(varlist=lb_vars, new_lower_bounds=lower,
                                new_upper_bounds=upper, feasibility_tol=feasibility_tol,
-                               safety_tol=safety_tol)
+                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
 
             logger.debug('done tightening lbs')
 
@@ -989,7 +998,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             _update_var_bounds(varlist=ub_vars, new_lower_bounds=lower,
                                new_upper_bounds=upper, feasibility_tol=feasibility_tol,
-                               safety_tol=safety_tol)
+                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
 
             logger.debug('done tightening ubs')
 
@@ -1040,7 +1049,7 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                                       filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                                       objective_bound=None, with_progress_bar=False, parallel=False,
                                       vars_to_tighten_by_block=None, feasibility_tol=0,
-                                      integer_tol=1e-4, safety_tol=0):
+                                      integer_tol=1e-4, safety_tol=0, max_acceptable_bound=math.inf):
     """
     This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
     However, all OBBT problems are solved with the binary and integer variables relaxed.
@@ -1103,6 +1112,10 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
         purpose of this is to account for numerical error in the
         solution of the OBBT problems and to avoid cutting off valid
         portions of the feasible region.
+    max_acceptable_bound: float
+        If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
+        computed bound will be rejected. If the lower bound computed for a variable is less than 
+        -max_acceptable_bound, then the computed bound will be rejected.
 
     Returns
     -------
@@ -1130,7 +1143,8 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                            parallel=parallel,
                            vars_to_tighten_by_block=vars_to_tighten_by_block,
                            feasibility_tol=feasibility_tol,
-                           safety_tol=safety_tol)
+                           safety_tol=safety_tol,
+                           max_acceptable_bound=max_acceptable_bound)
 
     pop_integers(relaxed_binary_vars, relaxed_integer_vars)
 
