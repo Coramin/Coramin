@@ -895,13 +895,13 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
     dbt_info.num_vars_successful = 0
     dbt_info.num_vars_filtered = 0
 
+    assert obbt_method in OBBTMethod
     if vars_to_tighten_by_block is None:
         if obbt_method == OBBTMethod.DECOMPOSED:
             _method = 'dbt'
         elif obbt_method == OBBTMethod.FULL_SPACE:
             _method = 'full_space'
         else:
-            assert obbt_method == OBBTMethod.LEAVES
             _method = 'leaves'
         vars_to_tighten_by_block = collect_vars_to_tighten_by_block(relaxation, _method)
 
@@ -1108,6 +1108,16 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
     -------
     dbt_info: DBTInfo
     """
+    assert obbt_method in OBBTMethod
+    if vars_to_tighten_by_block is None:
+        if obbt_method == OBBTMethod.DECOMPOSED:
+            _method = 'dbt'
+        elif obbt_method == OBBTMethod.FULL_SPACE:
+            _method = 'full_space'
+        else:
+            _method = 'leaves'
+        vars_to_tighten_by_block = collect_vars_to_tighten_by_block(relaxation, _method)
+
     relaxed_binary_vars, relaxed_integer_vars = push_integers(relaxation)
 
     dbt_info = perform_dbt(relaxation=relaxation,
