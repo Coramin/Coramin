@@ -781,8 +781,10 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
         if orig_ub is None:
             orig_ub = math.inf
 
-        new_lb -= safety_tol
-        new_ub += safety_tol
+        rel_lb_safety = safety_tol * abs(new_lb)
+        rel_ub_safety = safety_tol * abs(new_ub)
+        new_lb -= max(safety_tol, rel_lb_safety)
+        new_ub += max(safety_tol, rel_ub_safety)
 
         if new_lb < -max_acceptable_bound:
             new_lb = -math.inf
