@@ -417,7 +417,7 @@ class TestNumCons(unittest.TestCase):
 
 
 class TestDecompose(unittest.TestCase):
-    def helper(self, case):
+    def helper(self, case, min_partition_ratio, expected_termination):
         test_dir = os.path.dirname(os.path.abspath(__file__))
         pglib_dir = os.path.join(test_dir, 'pglib-opf-master')
         if not os.path.isdir(pglib_dir):
@@ -429,10 +429,13 @@ class TestDecompose(unittest.TestCase):
                                               use_fbbt=True,
                                               fbbt_options={'deactivate_satisfied_constraints': True,
                                                             'max_iter': 2})
-        decomposed_m, component_map = decompose_model(model=relaxed_m,
-                                                      max_leaf_nnz=1000,
-                                                      min_partition_ratio=1.5,
-                                                      limit_num_stages=True)
+        (decomposed_m,
+         component_map,
+         termination_reason) = decompose_model(model=relaxed_m,
+                                               max_leaf_nnz=1000,
+                                               min_partition_ratio=1.4,
+                                               limit_num_stages=True)
+        self.assertEqual(termination_reason, expected_termination)
         for r in coramin.relaxations.relaxation_data_objects(block=relaxed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
@@ -505,16 +508,16 @@ class TestDecompose(unittest.TestCase):
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
     def test_decompose1(self):
-        self.helper('pglib_opf_case5_pjm.m')
+        self.helper('pglib_opf_case5_pjm.m', min_partition_ratio=1.5, expected_termination=coramin.domain_reduction.dbt.DecompositionStatus.problem_too_small)
 
     def test_decompose2(self):
-        self.helper('pglib_opf_case30_ieee.m')
+        self.helper('pglib_opf_case30_ieee.m', min_partition_ratio=1.5, expected_termination=coramin.domain_reduction.dbt.DecompositionStatus.normal)
 
     def test_decompose3(self):
-        self.helper('pglib_opf_case118_ieee.m')
+        self.helper('pglib_opf_case118_ieee.m', min_partition_ratio=1.5, expected_termination=coramin.domain_reduction.dbt.DecompositionStatus.normal)
 
     def test_decompose4(self):
-        self.helper('pglib_opf_case14_ieee.m')
+        self.helper('pglib_opf_case14_ieee.m', min_partition_ratio=1.4, expected_termination=coramin.domain_reduction.dbt.DecompositionStatus.normal)
 
 
 class TestVarsToTightenByBlock(unittest.TestCase):
