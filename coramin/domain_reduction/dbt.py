@@ -926,6 +926,25 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_vars_to_tighten += 2 * len(vars_to_tighten)
             else:
                 dbt_info.num_coupling_vars_to_tighten += 2 * len(vars_to_tighten)
+
+    if obbt_method == OBBTMethod.FULL_SPACE:
+        if using_persistent_solver:
+            solver.set_instance(relaxation)
+        all_vars_to_tighten = ComponentSet()
+        for block, block_vars_to_tighten in vars_to_tighten_by_block.items():
+            all_vars_to_tighten.update(block_vars_to_tighten)
+        if filter_method == FilterMethod.AGGRESSIVE:
+            logger.debug('starting full space filter')
+            res = aggressive_filter(candidate_variables=all_vars_to_tighten, relaxation=relaxation,
+                                    solver=solver, tolerance=1e-4, objective_bound=objective_bound)
+            full_space_lb_vars, full_space_ub_vars = res
+            logger.debug('finished full space filter')
+        else:
+            full_space_lb_vars = all_vars_to_tighten
+            full_space_ub_vars = all_vars_to_tighten
+    else:
+        full_space_lb_vars = None
+        full_space_ub_vars = None
     
     for stage in range(num_stages):
         if time.time() - t0 >= time_limit:
@@ -938,7 +957,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             if time.time() - t0 >= time_limit:
                 break
 
-            if obbt_method == OBBTMethod.LEAVES and (not block.is_leaf()):
+            if obbt_method in {OBBTMethod.LEAVES, OBBTMethod.FULL_SPACE} and (not block.is_leaf()):
                 continue
             if obbt_method == OBBTMethod.FULL_SPACE:
                 block_to_tighten_with = relaxation
@@ -956,10 +975,14 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             if filter_method == FilterMethod.AGGRESSIVE:
                 logger.debug('starting filter')
-                res = aggressive_filter(candidate_variables=vars_to_tighten, relaxation=block_to_tighten_with,
-                                        solver=solver, tolerance=1e-4, objective_bound=_ub)
-                lb_vars, ub_vars = res
-                if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+                if obbt_method == OBBTMethod.FULL_SPACE:
+                    lb_vars = ComponentSet([v for v in vars_to_tighten if v in full_space_lb_vars])
+                    ub_vars = ComponentSet([v for v in vars_to_tighten if v in full_space_ub_vars])
+                else:
+                    res = aggressive_filter(candidate_variables=vars_to_tighten, relaxation=block_to_tighten_with,
+                                            solver=solver, tolerance=1e-4, objective_bound=_ub)
+                    lb_vars, ub_vars = res
+                if block.is_leaf():
                     dbt_info.num_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
                 else:
                     dbt_info.num_coupling_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
@@ -973,7 +996,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
                               update_bounds=False, parallel=parallel, collect_obbt_info=True)
             lower, upper, obbt_info = res
-            if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+            if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
                 dbt_info.num_vars_successful += obbt_info.num_successful_problems
             else:
@@ -991,7 +1014,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                               direction='ubs', time_limit=(time_limit - (time.time() - t0)),
                               update_bounds=False, parallel=parallel, collect_obbt_info=True)
             lower, upper, obbt_info = res
-            if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+            if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
                 dbt_info.num_vars_successful += obbt_info.num_successful_problems
             else:
@@ -1051,7 +1074,7 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                                       filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                                       objective_bound=None, with_progress_bar=False, parallel=False,
                                       vars_to_tighten_by_block=None, feasibility_tol=0,
-                                      integer_tol=1e-4, safety_tol=0, max_acceptable_bound=math.inf):
+                                      integer_tol=1e-2, safety_tol=0, max_acceptable_bound=math.inf):
     """
     This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
     However, all OBBT problems are solved with the binary and integer variables relaxed.
