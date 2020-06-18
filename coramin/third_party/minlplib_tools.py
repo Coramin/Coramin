@@ -35,7 +35,7 @@ def get_minlplib_instancedata(target_filename=None):
 
     downloader = download.FileDownloader()
     downloader.set_destination_filename(target_filename)
-    downloader.get_binary_file('http://www.minlplib.org/instancedata.csv')
+    downloader.get_text_file('http://www.minlplib.org/instancedata.csv')
 
 
 def _process_acceptable_arg(name, arg, default):
