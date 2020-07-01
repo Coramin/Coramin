@@ -868,11 +868,11 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         feasibility tol (but will not be set lower than the original lower bound) and the computed upper
         bound is increased by feasibility_tol (but will not be set higher than the original upper bound).
     safety_tol: float
-        Computed lower bounds will be decreased by safety_tol and
-        computed upper bounds will be increased by safety_tol. The
-        purpose of this is to account for numerical error in the
-        solution of the OBBT problems and to avoid cutting off valid
-        portions of the feasible region.
+        Computed lower bounds will be decreased by max(safety_tol, safety_tol*abs(new_lb) and
+        computed upper bounds will be increased by max(safety_tol, safety_tol*abs(new_ub) where
+        new_lb and new_ub are the bounds computed from OBBT/DBT. The purpose of this is to
+        account for numerical error in the solution of the OBBT problems and to avoid cutting
+        off valid portions of the feasible region.
     max_acceptable_bound: float
         If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
         computed bound will be rejected. If the lower bound computed for a variable is less than 
@@ -1132,11 +1132,11 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
         the computed lower bound by more than integer_tol, then the lower bound is increased to the smallest
         integer greater than the computed lower bound. Similar logic holds for the upper bound.
     safety_tol: float
-        Computed lower bounds will be decreased by safety_tol and
-        computed upper bounds will be increased by safety_tol. The
-        purpose of this is to account for numerical error in the
-        solution of the OBBT problems and to avoid cutting off valid
-        portions of the feasible region.
+        Computed lower bounds will be decreased by max(safety_tol, safety_tol*abs(new_lb) and
+        computed upper bounds will be increased by max(safety_tol, safety_tol*abs(new_ub) where
+        new_lb and new_ub are the bounds computed from OBBT/DBT. The purpose of this is to
+        account for numerical error in the solution of the OBBT problems and to avoid cutting
+        off valid portions of the feasible region.
     max_acceptable_bound: float
         If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
         computed bound will be rejected. If the lower bound computed for a variable is less than 
