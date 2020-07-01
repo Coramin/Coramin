@@ -47,7 +47,11 @@ class _ECPBounder(OptSolver):
             self._pyomo_model = args[0]
 
         options = self.options(kwargs.pop('options', dict()))
-        subproblem_solver_options = self.subproblem_solver_options(kwargs.pop('subproblem_solver_options', dict()))
+        subproblem_solver_options = dict()
+        for k, v in self.subproblem_solver_options.items():
+            subproblem_solver_options[k] = v
+        for k, v in kwargs.pop('subproblem_solver_options', dict()).items():
+            subproblem_solver_options[k] = v
 
         obj = None
         for _obj in self._pyomo_model.component_data_objects(pe.Objective, descend_into=True, active=True, sort=True):
@@ -90,10 +94,13 @@ class _ECPBounder(OptSolver):
             max_viol = 0
             for b in self._relaxations:
                 viol = None
-                if b.is_rhs_convex():
-                    viol = pe.value(b.get_rhs_expr()) - b.get_aux_var().value
-                elif b.is_rhs_concave():
-                    viol = b.get_aux_var().value - pe.value(b.get_rhs_expr())
+                try:
+                    if b.is_rhs_convex():
+                        viol = pe.value(b.get_rhs_expr()) - b.get_aux_var().value
+                    elif b.is_rhs_concave():
+                        viol = b.get_aux_var().value - pe.value(b.get_rhs_expr())
+                except (OverflowError, ZeroDivisionError, ValueError) as err:
+                    logger.warning('could not generate ECP cut due to ' + str(err))
                 if viol is not None:
                     if viol > max_viol:
                         max_viol = viol
