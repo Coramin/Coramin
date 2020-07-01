@@ -295,10 +295,9 @@ class BaseRelaxationData(_BlockData):
 
     def push_oa_points(self):
         """
-        Save the current list of OA points for later use (this clears the current set of OA points until popped.)
+        Save the current list of OA points for later use through pop_oa_points().
         """
-        self._saved_oa_points.append(self._oa_points)
-        self.clear_oa_points()
+        self._saved_oa_points.append([pe.ComponentMap(i) for i in self._oa_points])
 
     def clear_oa_points(self):
         """
@@ -431,10 +430,9 @@ class BasePWRelaxationData(BaseRelaxationData):
 
     def push_partitions(self):
         """
-        Save the current partitioning and then clear the current partitioning
+        Save the current partitioning for later use through pop_partitions().
         """
-        self._saved_partitions.append(self._partitions)
-        self.clear_partitions()
+        self._saved_partitions.append(pe.ComponentMap((k, list(v)) for k, v in self._partitions.items()))
 
     def clear_partitions(self):
         """
