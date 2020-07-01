@@ -765,7 +765,7 @@ class DBTInfo(object):
         self.num_vars_filtered = None
 
 
-def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol):
+def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol, safety_tol, max_acceptable_bound):
     for ndx, v in enumerate(varlist):
         new_lb = new_lower_bounds[ndx]
         new_ub = new_upper_bounds[ndx]
@@ -780,6 +780,16 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
             orig_lb = -math.inf
         if orig_ub is None:
             orig_ub = math.inf
+
+        rel_lb_safety = safety_tol * abs(new_lb)
+        rel_ub_safety = safety_tol * abs(new_ub)
+        new_lb -= max(safety_tol, rel_lb_safety)
+        new_ub += max(safety_tol, rel_ub_safety)
+
+        if new_lb < -max_acceptable_bound:
+            new_lb = -math.inf
+        if new_ub > max_acceptable_bound:
+            new_ub = math.inf
 
         if new_lb > new_ub:
             msg = 'variable ub is less than lb; var: {0}; lb: {1}; ub: {2}'.format(str(v), new_lb, new_ub)
@@ -805,9 +815,9 @@ def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_
 def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                 objective_bound=None, with_progress_bar=False, parallel=False,
-                vars_to_tighten_by_block=None, feasibility_tol=0):
-    """
-    This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
+                vars_to_tighten_by_block=None, feasibility_tol=0,
+                safety_tol=0, max_acceptable_bound=math.inf):
+    """This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
 
     Parameters
     ----------
@@ -857,10 +867,21 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         upper bound, but by less than feasibility_tol, then the computed lower bound is decreased by
         feasibility tol (but will not be set lower than the original lower bound) and the computed upper
         bound is increased by feasibility_tol (but will not be set higher than the original upper bound).
+    safety_tol: float
+        Computed lower bounds will be decreased by max(safety_tol, safety_tol*abs(new_lb) and
+        computed upper bounds will be increased by max(safety_tol, safety_tol*abs(new_ub) where
+        new_lb and new_ub are the bounds computed from OBBT/DBT. The purpose of this is to
+        account for numerical error in the solution of the OBBT problems and to avoid cutting
+        off valid portions of the feasible region.
+    max_acceptable_bound: float
+        If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
+        computed bound will be rejected. If the lower bound computed for a variable is less than 
+        -max_acceptable_bound, then the computed bound will be rejected.
 
     Returns
     -------
     dbt_info: DBTInfo
+
     """
     t0 = time.time()
     
@@ -885,13 +906,13 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
     dbt_info.num_vars_successful = 0
     dbt_info.num_vars_filtered = 0
 
+    assert obbt_method in OBBTMethod
     if vars_to_tighten_by_block is None:
         if obbt_method == OBBTMethod.DECOMPOSED:
             _method = 'dbt'
         elif obbt_method == OBBTMethod.FULL_SPACE:
             _method = 'full_space'
         else:
-            assert obbt_method == OBBTMethod.LEAVES
             _method = 'leaves'
         vars_to_tighten_by_block = collect_vars_to_tighten_by_block(relaxation, _method)
 
@@ -905,6 +926,25 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_vars_to_tighten += 2 * len(vars_to_tighten)
             else:
                 dbt_info.num_coupling_vars_to_tighten += 2 * len(vars_to_tighten)
+
+    if obbt_method == OBBTMethod.FULL_SPACE:
+        if using_persistent_solver:
+            solver.set_instance(relaxation)
+        all_vars_to_tighten = ComponentSet()
+        for block, block_vars_to_tighten in vars_to_tighten_by_block.items():
+            all_vars_to_tighten.update(block_vars_to_tighten)
+        if filter_method == FilterMethod.AGGRESSIVE:
+            logger.debug('starting full space filter')
+            res = aggressive_filter(candidate_variables=all_vars_to_tighten, relaxation=relaxation,
+                                    solver=solver, tolerance=1e-4, objective_bound=objective_bound)
+            full_space_lb_vars, full_space_ub_vars = res
+            logger.debug('finished full space filter')
+        else:
+            full_space_lb_vars = all_vars_to_tighten
+            full_space_ub_vars = all_vars_to_tighten
+    else:
+        full_space_lb_vars = None
+        full_space_ub_vars = None
     
     for stage in range(num_stages):
         if time.time() - t0 >= time_limit:
@@ -917,7 +957,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             if time.time() - t0 >= time_limit:
                 break
 
-            if obbt_method == OBBTMethod.LEAVES and (not block.is_leaf()):
+            if obbt_method in {OBBTMethod.LEAVES, OBBTMethod.FULL_SPACE} and (not block.is_leaf()):
                 continue
             if obbt_method == OBBTMethod.FULL_SPACE:
                 block_to_tighten_with = relaxation
@@ -935,10 +975,14 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             if filter_method == FilterMethod.AGGRESSIVE:
                 logger.debug('starting filter')
-                res = aggressive_filter(candidate_variables=vars_to_tighten, relaxation=block_to_tighten_with,
-                                        solver=solver, tolerance=1e-4, objective_bound=_ub)
-                lb_vars, ub_vars = res
-                if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+                if obbt_method == OBBTMethod.FULL_SPACE:
+                    lb_vars = ComponentSet([v for v in vars_to_tighten if v in full_space_lb_vars])
+                    ub_vars = ComponentSet([v for v in vars_to_tighten if v in full_space_ub_vars])
+                else:
+                    res = aggressive_filter(candidate_variables=vars_to_tighten, relaxation=block_to_tighten_with,
+                                            solver=solver, tolerance=1e-4, objective_bound=_ub)
+                    lb_vars, ub_vars = res
+                if block.is_leaf():
                     dbt_info.num_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
                 else:
                     dbt_info.num_coupling_vars_filtered += 2*len(vars_to_tighten) - len(lb_vars) - len(ub_vars)
@@ -952,7 +996,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
                               update_bounds=False, parallel=parallel, collect_obbt_info=True)
             lower, upper, obbt_info = res
-            if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+            if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
                 dbt_info.num_vars_successful += obbt_info.num_successful_problems
             else:
@@ -960,7 +1004,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
 
             _update_var_bounds(varlist=lb_vars, new_lower_bounds=lower,
-                               new_upper_bounds=upper, feasibility_tol=feasibility_tol)
+                               new_upper_bounds=upper, feasibility_tol=feasibility_tol,
+                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
 
             logger.debug('done tightening lbs')
 
@@ -969,7 +1014,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                               direction='ubs', time_limit=(time_limit - (time.time() - t0)),
                               update_bounds=False, parallel=parallel, collect_obbt_info=True)
             lower, upper, obbt_info = res
-            if obbt_method == OBBTMethod.FULL_SPACE or block.is_leaf():
+            if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
                 dbt_info.num_vars_successful += obbt_info.num_successful_problems
             else:
@@ -977,7 +1022,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
 
             _update_var_bounds(varlist=ub_vars, new_lower_bounds=lower,
-                               new_upper_bounds=upper, feasibility_tol=feasibility_tol)
+                               new_upper_bounds=upper, feasibility_tol=feasibility_tol,
+                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
 
             logger.debug('done tightening ubs')
 
@@ -1028,7 +1074,7 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                                       filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                                       objective_bound=None, with_progress_bar=False, parallel=False,
                                       vars_to_tighten_by_block=None, feasibility_tol=0,
-                                      integer_tol=1e-4):
+                                      integer_tol=1e-2, safety_tol=0, max_acceptable_bound=math.inf):
     """
     This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
     However, all OBBT problems are solved with the binary and integer variables relaxed.
@@ -1085,11 +1131,31 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
         If the lower bound computed for an integer variable is greater than the largest integer less than
         the computed lower bound by more than integer_tol, then the lower bound is increased to the smallest
         integer greater than the computed lower bound. Similar logic holds for the upper bound.
+    safety_tol: float
+        Computed lower bounds will be decreased by max(safety_tol, safety_tol*abs(new_lb) and
+        computed upper bounds will be increased by max(safety_tol, safety_tol*abs(new_ub) where
+        new_lb and new_ub are the bounds computed from OBBT/DBT. The purpose of this is to
+        account for numerical error in the solution of the OBBT problems and to avoid cutting
+        off valid portions of the feasible region.
+    max_acceptable_bound: float
+        If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
+        computed bound will be rejected. If the lower bound computed for a variable is less than 
+        -max_acceptable_bound, then the computed bound will be rejected.
 
     Returns
     -------
     dbt_info: DBTInfo
     """
+    assert obbt_method in OBBTMethod
+    if vars_to_tighten_by_block is None:
+        if obbt_method == OBBTMethod.DECOMPOSED:
+            _method = 'dbt'
+        elif obbt_method == OBBTMethod.FULL_SPACE:
+            _method = 'full_space'
+        else:
+            _method = 'leaves'
+        vars_to_tighten_by_block = collect_vars_to_tighten_by_block(relaxation, _method)
+
     relaxed_binary_vars, relaxed_integer_vars = push_integers(relaxation)
 
     dbt_info = perform_dbt(relaxation=relaxation,
@@ -1101,7 +1167,9 @@ def perform_dbt_with_integers_relaxed(relaxation, solver, obbt_method=OBBTMethod
                            with_progress_bar=with_progress_bar,
                            parallel=parallel,
                            vars_to_tighten_by_block=vars_to_tighten_by_block,
-                           feasibility_tol=feasibility_tol)
+                           feasibility_tol=feasibility_tol,
+                           safety_tol=safety_tol,
+                           max_acceptable_bound=max_acceptable_bound)
 
     pop_integers(relaxed_binary_vars, relaxed_integer_vars)
 

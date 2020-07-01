@@ -108,6 +108,8 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
     """
     vars_to_minimize = ComponentSet(candidate_variables)
     vars_to_maximize = ComponentSet(candidate_variables)
+    if len(candidate_variables) == 0:
+        return vars_to_minimize, vars_to_maximize
 
     initial_var_values, deactivated_objectives = _bt_prep(model=relaxation, solver=solver,
                                                           objective_bound=objective_bound)
