@@ -7,6 +7,7 @@ import math
 from pyomo.core.kernel.component_set import ComponentSet
 import numpy as np
 from pyomo.core.base.param import _ParamData, SimpleParam
+from pyomo.core.expr.sympy_tools import sympyify_expression
 
 
 class TestAutoRelax(unittest.TestCase):
@@ -639,6 +640,28 @@ class TestAutoRelax(unittest.TestCase):
         self.assertEqual(id(rel.aux_vars[3]), id(rel.relaxations.rel1.get_aux_var()))
 
         self.assertFalse(hasattr(rel.relaxations, 'rel2'))
+
+    def test_sqrt(self):
+        m = pe.ConcreteModel()
+        m.x = pe.Var()
+        m.z = pe.Var()
+        m.c = pe.Constraint(expr=m.z + pe.sqrt(2*pe.log(m.x)) <= 1)
+        coramin.relaxations.relax(m, in_place=True, use_fbbt=False)
+        rels = list(coramin.relaxations.relaxation_data_objects(m, descend_into=True, active=True, sort=True))
+        self.assertEqual(len(rels), 2)
+        rel0 = m.relaxations.rel0  # log
+        rel1 = m.relaxations.rel1  # sqrt
+        self.assertEqual(sympyify_expression(rel0.get_rhs_expr() - pe.log(m.x))[1], 0)
+        self.assertEqual(sympyify_expression(rel1.get_rhs_expr() - m.aux_vars[3]**0.5)[1], 0)
+        self.assertEqual(sympyify_expression(m.aux_cons[1].body - m.aux_vars[3] + 2 * m.aux_vars[1])[1], 0)
+        self.assertEqual(sympyify_expression(m.aux_cons[2].body - m.z - m.aux_vars[2])[1], 0)
+        self.assertEqual(m.aux_cons[1].lower, 0)
+        self.assertEqual(m.aux_cons[2].lower, None)
+        self.assertEqual(m.aux_cons[2].upper, 1)
+        self.assertIs(rel0.get_aux_var(), m.aux_vars[1])
+        self.assertIs(rel1.get_aux_var(), m.aux_vars[2])
+        self.assertEqual(rel0.relaxation_side, coramin.utils.RelaxationSide.UNDER)
+        self.assertEqual(rel1.relaxation_side, coramin.utils.RelaxationSide.UNDER)
 
     def test_exp(self):
         m = pe.ConcreteModel()
