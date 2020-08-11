@@ -968,7 +968,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                     _ub = objective_bound
                 else:
                     _ub = None
-            if using_persistent_solver:
+            if using_persistent_solver and obbt_method != OBBTMethod.FULL_SPACE:
+                # This is done above, just once, for full space
                 solver.set_instance(block_to_tighten_with)
                     
             vars_to_tighten = vars_to_tighten_by_block[block]
