@@ -13,6 +13,7 @@ from .mccormick import PWMcCormickRelaxation
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
 from pyomo.core.base.expression import _GeneralExpressionData, SimpleExpression
+from coramin.relaxations.iterators import nonrelaxation_component_data_objects
 
 logger = logging.getLogger(__name__)
 
@@ -917,7 +918,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
     counter_dict = dict()
     degree_map = ComponentMap()
 
-    for c in m.component_data_objects(ctype=Constraint, active=True, descend_into=descend_into, sort=True):
+    for c in nonrelaxation_component_data_objects(m, ctype=Constraint, active=True, descend_into=descend_into, sort=True):
         body_degree = polynomial_degree(c.body)
         if body_degree is not None:
             if body_degree <= 1:
@@ -956,7 +957,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         else:
             parent_block.del_component(c)
 
-    for c in m.component_data_objects(ctype=pe.Objective, active=True, descend_into=descend_into, sort=True):
+    for c in nonrelaxation_component_data_objects(m, ctype=pe.Objective, active=True, descend_into=descend_into, sort=True):
         degree = polynomial_degree(c.expr)
         if degree is not None:
             if degree <= 1:
