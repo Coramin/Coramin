@@ -18,7 +18,7 @@ class TestMINLPLibTools(unittest.TestCase):
         coramin.third_party.get_minlplib_instancedata()
         self.assertTrue(os.path.exists(os.path.join(current_dir, 'minlplib', 'instancedata.csv')))
         cases = coramin.third_party.filter_minlplib_instances()
-        self.assertEqual(len(cases), 1704)
+        self.assertEqual(len(cases), 1730)
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
@@ -35,10 +35,10 @@ class TestMINLPLibTools(unittest.TestCase):
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_formats=['osil', 'gms'])
-        self.assertEqual(len(cases), 1704)  # unit
+        self.assertEqual(len(cases), 1730)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
-        self.assertEqual(len(cases), 1704)  # unit
+        self.assertEqual(len(cases), 1730)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_probtype=['QCQP', 'MIQCQP', 'MBQCQP'])
@@ -49,87 +49,87 @@ class TestMINLPLibTools(unittest.TestCase):
                                                               acceptable_objcurvature='linear',
                                                               acceptable_conscurvature='convex',
                                                               acceptable_convex=True)
-        self.assertEqual(len(cases), 310)  # regression
+        self.assertEqual(len(cases), 336)  # regression
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_convex=[True])
-        self.assertEqual(len(cases), 430)  # regression
+        self.assertEqual(len(cases), 456)  # regression
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               min_nvars=2, max_nvars=200000)
-        self.assertEqual(len(cases), 1704-16-1)  # unit
+        self.assertEqual(len(cases), 1730-16-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nbinvars=31000)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nintvars=1999)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_ncons=164000)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nsemi=13)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nsos1=0, max_nsos2=0)
-        self.assertEqual(len(cases), 1704-6)  # unit
+        self.assertEqual(len(cases), 1730-6)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nnlvars=199998)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nnlbinvars=23867)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nnlintvars=1999)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nobjnz=99997)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nobjnlnz=99997)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nlincons=164319)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nquadcons=139999)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_npolynomcons=13975)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nsignomcons=801)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_ngennlcons=13975)
-        self.assertEqual(len(cases), 1704-2)  # unit
+        self.assertEqual(len(cases), 1730-2)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_njacobiannlnz=1623023)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nlaghessiannz=1825419)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               max_nlaghessiandiagnz=100000)
-        self.assertEqual(len(cases), 1704-1)  # unit
+        self.assertEqual(len(cases), 1730-1)  # unit
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               min_nnlsemi=1)
@@ -137,7 +137,7 @@ class TestMINLPLibTools(unittest.TestCase):
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_objcurvature=['linear', 'convex'])
-        self.assertEqual(len(cases), 1330)  # regression
+        self.assertEqual(len(cases), 1356)  # regression
         
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
@@ -146,7 +146,7 @@ class TestMINLPLibTools(unittest.TestCase):
         current_dir = this_file_dir()
         coramin.third_party.get_minlplib(download_dir=os.path.join(current_dir, 'minlplib', 'osil'))
         files = os.listdir(os.path.join(current_dir, 'minlplib', 'osil'))
-        self.assertEqual(len(files), 1703)
+        self.assertEqual(len(files), 1729)
         for i in files:
             self.assertTrue(i.endswith('.osil'))
         for i in os.listdir(os.path.join(current_dir, 'minlplib', 'osil')):
