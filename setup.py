@@ -16,6 +16,7 @@ setup(name='coramin',
       install_requires=['pyomo>=5.6', 'numpy', 'scipy'],
       include_package_data=True,
       scripts=[],
+      python_requires='>=3.6',
       classifiers=["Programming Language :: Python :: 3",
                    "License :: OSI Approved :: BSD License",
                    "Operating System :: OS Independent"])
