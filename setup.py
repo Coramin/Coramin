@@ -1,31 +1,25 @@
 from setuptools import setup, find_packages
 from distutils.core import Extension
 
-DISTNAME = 'coramin'
-VERSION = '0.1.0'
-EXTENSIONS = []
-DESCRIPTION = 'Coramin: Pyomo tools for MINLP'
-LONG_DESCRIPTION = open('README.md').read()
-AUTHOR = 'Coramin Developers'
-MAINTAINER_EMAIL = 'carldlaird@users.noreply.github.com'
-LICENSE = 'Revised BSD'
-URL = 'https://github.com/Coramin/Coramin'
 
-setuptools_kwargs = {
-    'zip_safe': False,
-    'install_requires': ['pyomo>=5.6', 'numpy', 'scipy'],
-    'scripts': [],
-    'include_package_data': True,
-}
-
-setup(name=DISTNAME,
-      version=VERSION,
+setup(name='coramin',
+      version='0.1.1.dev0',
       packages=find_packages(),
-      ext_modules=EXTENSIONS,
-      description=DESCRIPTION,
-      long_description=LONG_DESCRIPTION,
-      author=AUTHOR,
-      maintainer_email=MAINTAINER_EMAIL,
-      license=LICENSE,
-      url=URL,
-      **setuptools_kwargs)
+      ext_modules=[],
+      description='Coramin: Pyomo tools for MINLP',
+      long_description=open('README.md').read(),
+      long_description_content_type="text/markdown",
+      author='Coramin Developers',
+      maintainer_email='mlbynum@sandia.gov',
+      license='Revised BSD',
+      url='https://github.com/Coramin/Coramin',
+      install_requires=['pyomo>=5.6', 'numpy', 'scipy'],
+      include_package_data=True,
+      scripts=[],
+      python_requires='>=3.6',
+      classifiers=["Programming Language :: Python :: 3",
+                   "Programming Language :: Python :: 3.6",
+                   "Programming Language :: Python :: 3.7",
+                   "Programming Language :: Python :: 3.8",
+                   "License :: OSI Approved :: BSD License",
+                   "Operating System :: OS Independent"])
