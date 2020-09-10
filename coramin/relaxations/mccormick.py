@@ -242,7 +242,7 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
                                        x1_pts=self._partitions[self._x1],
                                        relaxation_side=self.relaxation_side)
 
-    def add_parition_point(self, value=None):
+    def add_partition_point(self, value=None):
         """
         This method adds one point to the partitioning of x1. If value is not
         specified, a single point will be added to the partitioning of x1 at the current value of x1. If value is

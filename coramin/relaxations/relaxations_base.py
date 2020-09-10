@@ -414,7 +414,7 @@ class BasePWRelaxationData(BaseRelaxationData):
         BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
                                       use_linear_relaxation=use_linear_relaxation, large_eval_tol=large_eval_tol)
 
-    def add_parition_point(self):
+    def add_partition_point(self):
         """
         Add a point to the current partitioning. This does not rebuild the relaxation. You must call rebuild()
         to rebuild the relaxation.
