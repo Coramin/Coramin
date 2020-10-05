@@ -5,7 +5,7 @@ import unittest
 import pyomo.environ as pe
 import coramin
 from networkx import is_bipartite
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet
 from networkx import Graph
 from pyomo.core.expr.visitor import identify_variables
 from pyomo.core.expr import differentiate

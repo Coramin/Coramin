@@ -1,5 +1,5 @@
 import pyomo.environ as pyo
-from pyomo.core.kernel.component_map import ComponentMap
+from pyomo.common.collections import ComponentMap
 from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 from coramin.utils.coramin_enums import FunctionShape

@@ -7,7 +7,7 @@ from .obbt import perform_obbt as normal_obbt
 from .filters import aggressive_filter
 import pyomo.environ as pe
 from pyomo.core.expr.visitor import identify_variables
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet
 from wntr.utils.ordered_set import OrderedSet
 from coramin.relaxations.iterators import relaxation_data_objects, nonrelaxation_component_data_objects
 from pyomo.core.expr.visitor import replace_expressions

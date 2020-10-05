@@ -1,6 +1,6 @@
 from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
 from pyomo.opt.base.solvers import OptSolver
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet
 from coramin.relaxations.relaxations_base import BaseRelaxationData, BaseRelaxation
 import pyomo.environ as pe
 import time

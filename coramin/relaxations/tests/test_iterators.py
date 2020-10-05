@@ -1,7 +1,7 @@
 import coramin
 import unittest
 import pyomo.environ as pe
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet
 
 
 class TestIterators(unittest.TestCase):
