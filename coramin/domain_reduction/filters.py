@@ -1,4 +1,4 @@
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet
 from coramin.domain_reduction.obbt import _bt_prep, _bt_cleanup
 import pyomo.environ as pe
 from pyomo.core.expr.current import LinearExpression

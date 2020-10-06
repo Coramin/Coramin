@@ -3,7 +3,7 @@ from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.PyomoModel import ConcreteModel
 from pyomo.opt import SolverStatus, TerminationCondition as TC
 import warnings
-from pyomo.core.kernel.component_map import ComponentMap
+from pyomo.common.collections import ComponentMap
 from pyomo.solvers.plugins.solvers.GUROBI import GUROBISHELL
 from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
 from pyomo.solvers.plugins.solvers.gurobi_persistent import GurobiPersistent

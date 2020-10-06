@@ -3,8 +3,7 @@ from .custom_block import declare_custom_block
 import weakref
 import pyomo.environ as pe
 from collections.abc import Iterable
-from pyomo.core.kernel.component_map import ComponentMap
-from pyomo.core.kernel.component_set import ComponentSet
+from pyomo.common.collections import ComponentSet, ComponentMap
 from coramin.utils.coramin_enums import FunctionShape, RelaxationSide
 import warnings
 import logging
