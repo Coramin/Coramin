@@ -30,7 +30,7 @@ def _solve_loop(m, x, w, x_list, using_persistent_solver, solver):
     return w_list
 
 
-def plot_feasible_region_2d(m, relaxation, solver, show_plot=True, num_pts=100):
+def plot_relaxation(m, relaxation, solver, show_plot=True, num_pts=100):
     if len(relaxation.get_rhs_vars()) != 1:
         raise NotImplementedError('Plotting is not supported for {0}.'.format(type(relaxation)))
     
