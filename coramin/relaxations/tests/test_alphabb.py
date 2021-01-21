@@ -51,6 +51,6 @@ class TestAlphaBBRelaxation(unittest.TestCase):
         for _ in range(5):
             model.abb.add_oa_point()
             model.abb.rebuild()
-            solver = pe.SolverFactory('glpk')
+            solver = pe.SolverFactory('gurobi_direct')
             solver.solve(model)
             self.assertLessEqual(model.w.value, pe.value(model.f_x))

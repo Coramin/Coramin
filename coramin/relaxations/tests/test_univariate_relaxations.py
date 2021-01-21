@@ -29,7 +29,7 @@ class TestUnivariateExp(unittest.TestCase):
     def test_exp_ub(self):
         model = self.model.clone()
 
-        solver = pe.SolverFactory('glpk')
+        solver = pe.SolverFactory('gurobi_direct')
         solver.solve(model)
         self.assertAlmostEqual(pe.value(model.y), math.exp(1.5), 4)
 
@@ -37,7 +37,7 @@ class TestUnivariateExp(unittest.TestCase):
         model = self.model.clone()
         model.x_con = pe.Constraint(expr=model.x <= 0.3)
 
-        solver = pe.SolverFactory('glpk')
+        solver = pe.SolverFactory('gurobi_direct')
         solver.solve(model)
         self.assertAlmostEqual(pe.value(model.y), 1.44, 3)
 
@@ -45,7 +45,7 @@ class TestUnivariateExp(unittest.TestCase):
         model = self.model.clone()
         model.obj.sense = pe.minimize
 
-        solver = pe.SolverFactory('glpk')
+        solver = pe.SolverFactory('gurobi_direct')
         solver.solve(model)
         self.assertAlmostEqual(pe.value(model.y), math.exp(-1.5), 4)
 
@@ -153,7 +153,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('glpk')
+        opt = pe.SolverFactory('gurobi_direct')
         for xval in [-1, -0.5, 0, 0.5, 1]:
             pval = math.exp(xval)
             m.x.fix(xval)
@@ -178,7 +178,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('glpk')
+        opt = pe.SolverFactory('gurobi_direct')
         for xval in [-1, -0.5, 0, 0.5, 1]:
             pval = math.exp(xval)
             m.x.fix(xval)
@@ -201,7 +201,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('glpk')
+        opt = pe.SolverFactory('gurobi_direct')
         for xval in [0.5, 0.75, 1, 1.25, 1.5]:
             pval = math.log(xval)
             m.x.fix(xval)
@@ -226,7 +226,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('glpk')
+        opt = pe.SolverFactory('gurobi_direct')
         for xval in [0.5, 0.75, 1, 1.25, 1.5]:
             pval = math.log(xval)
             m.x.fix(xval)
@@ -259,7 +259,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('glpk')
+        opt = pe.SolverFactory('gurobi_direct')
         for xval in [-1, -0.5, 0, 0.5, 1]:
             pval = xval**2
             m.x.fix(xval)
