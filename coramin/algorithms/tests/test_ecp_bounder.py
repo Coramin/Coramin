@@ -17,7 +17,7 @@ class TestECPBounder(unittest.TestCase):
         m.c1 = pe.Constraint(expr=m.y >= (m.x - 1)**2)
         m.c2 = pe.Constraint(expr=m.y >= pe.exp(m.x))
         coramin.relaxations.relax(m, in_place=True)
-        opt = _ECPBounder(subproblem_solver='glpk')
+        opt = _ECPBounder(subproblem_solver='cplex_direct')
         res = opt.solve(m)
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertAlmostEqual(m.x.value, 0)
