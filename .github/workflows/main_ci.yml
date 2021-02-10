@@ -10,9 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
-      max-parallel: 2
+      max-parallel: 3
       matrix:
-        python-version: [3.6, 3.7]
+        python-version: [3.6, 3.7, 3.8]
     steps:
     - uses: actions/checkout@v1
     - name: setup conda
@@ -26,8 +26,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyomo numpy scipy nose codecov coverage cplex sympy
         pip install -i https://pypi.gurobi.com gurobipy
-        # The Python wrapper for metis requires networkx < 2.4
-        conda install mpi4py metis ipopt wntr networkx=2.3 --no-update-deps
+        conda install mpi4py metis ipopt wntr networkx --no-update-deps
         pip install metis
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
