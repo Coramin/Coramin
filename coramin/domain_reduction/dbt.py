@@ -252,6 +252,21 @@ def _is_dominated(ndx, num_cuts, balance, num_cuts_array, balance_array):
     return np.any(cut_diff & balance_diff)
 
 
+def _networkx_to_adjacency_list(graph: networkx.Graph):
+    adj_list = list()
+    node_to_ndx_map = dict()
+    for ndx, node in enumerate(graph.nodes):
+        node_to_ndx_map[node] = ndx
+
+    for ndx, node in enumerate(graph.nodes):
+        adj_list.append(list())
+        for other_node in graph.adj[node].keys():
+            other_ndx = node_to_ndx_map[other_node]
+            adj_list[ndx].append(other_ndx)
+
+    return adj_list
+
+
 def choose_metis_partition(graph, max_size_diff_trials, seed_trials):
     """
     Parameters
@@ -269,9 +284,9 @@ def choose_metis_partition(graph, max_size_diff_trials, seed_trials):
     for _max_size_diff in max_size_diff_trials:
         for _seed in seed_trials:
             if _seed is None:
-                edgecuts, parts = metis.part_graph(graph, nparts=2, ubvec=[1 + _max_size_diff])
+                edgecuts, parts = metis.part_graph(_networkx_to_adjacency_list(graph), nparts=2, ubvec=[1 + _max_size_diff])
             else:
-                edgecuts, parts = metis.part_graph(graph, nparts=2, ubvec=[1 + _max_size_diff], seed=_seed)
+                edgecuts, parts = metis.part_graph(_networkx_to_adjacency_list(graph), nparts=2, ubvec=[1 + _max_size_diff], seed=_seed)
             cut_list.append((edgecuts, sum(parts)/graph.number_of_nodes(), _max_size_diff, _seed))
     cut_list.sort(key=lambda i: i[0])
 
@@ -339,9 +354,9 @@ def split_metis(graph):
     """
     max_size_diff, seed = choose_metis_partition(graph, max_size_diff_trials=[0.15], seed_trials=list(range(10)))
     if seed is None:
-        edgecuts, parts = metis.part_graph(graph, nparts=2, ubvec=[1 + max_size_diff])
+        edgecuts, parts = metis.part_graph(_networkx_to_adjacency_list(graph), nparts=2, ubvec=[1 + max_size_diff])
     else:
-        edgecuts, parts = metis.part_graph(graph, nparts=2, ubvec=[1 + max_size_diff], seed=seed)
+        edgecuts, parts = metis.part_graph(_networkx_to_adjacency_list(graph), nparts=2, ubvec=[1 + max_size_diff], seed=seed)
 
     graph_a_nodes = OrderedSet()
     graph_b_nodes = OrderedSet()
