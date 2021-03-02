@@ -2,6 +2,7 @@ from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
 from pyomo.opt.base.solvers import OptSolver
 from pyomo.common.collections import ComponentSet
 from coramin.relaxations.relaxations_base import BaseRelaxationData, BaseRelaxation
+from coramin.utils.coramin_enums import RelaxationSide
 import pyomo.environ as pe
 import time
 from pyomo.opt.results.results_ import SolverResults
@@ -95,9 +96,9 @@ class _ECPBounder(OptSolver):
             for b in self._relaxations:
                 viol = None
                 try:
-                    if b.is_rhs_convex():
+                    if b.is_rhs_convex() and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}:
                         viol = pe.value(b.get_rhs_expr()) - b.get_aux_var().value
-                    elif b.is_rhs_concave():
+                    elif b.is_rhs_concave() and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
                         viol = b.get_aux_var().value - pe.value(b.get_rhs_expr())
                 except (OverflowError, ZeroDivisionError, ValueError) as err:
                     logger.warning('could not generate ECP cut due to ' + str(err))
