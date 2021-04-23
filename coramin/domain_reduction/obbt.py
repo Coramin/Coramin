@@ -306,7 +306,7 @@ def _bt_prep(model, solver, objective_bound=None):
 
     # add inequality bound on objective functions if required
     # obj.expr <= objective_ub
-    if objective_bound is not None:
+    if objective_bound is not None and math.isfinite(objective_bound):
         if len(deactivated_objectives) != 1:
             e = 'BoundsTightener: When providing objective_ub,' + \
                 ' the model must have one and only one objective function.'
