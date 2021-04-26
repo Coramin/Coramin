@@ -60,7 +60,10 @@ def _get_aux_var(parent_block, expr):
     lb, ub = compute_bounds_on_expr(expr)
     _aux_var.setlb(lb)
     _aux_var.setub(ub)
-    expr_value = pe.value(expr, exception=False)
+    try:
+        expr_value = pe.value(expr, exception=False)
+    except ArithmeticError:
+        expr_value = None
     if expr_value is not None and pe.value(_aux_var, exception=False) is None:
         _aux_var.set_value(expr_value)
     return _aux_var
