@@ -6,7 +6,7 @@ from pyomo.core.expr.visitor import identify_variables, identify_components
 import math
 from pyomo.common.collections import ComponentSet
 import numpy as np
-from pyomo.core.base.param import _ParamData, SimpleParam
+from pyomo.core.base.param import _ParamData, ScalarParam
 from pyomo.core.expr.sympy_tools import sympyify_expression
 
 
@@ -1046,13 +1046,13 @@ class TestDegree0(unittest.TestCase):
         m.aux = pe.Var()
         m.p = pe.Param(mutable=True, initialize=param_val)
         m.c = pe.Constraint(expr=m.aux == func(m.p) * m.x**2)
-        self.assertIn(m.p, ComponentSet(identify_components(m.c.body, [_ParamData, SimpleParam])))
+        self.assertIn(m.p, ComponentSet(identify_components(m.c.body, [_ParamData, ScalarParam])))
         coramin.relaxations.relax(m, in_place=True)
         rels = list(coramin.relaxations.relaxation_data_objects(m))
         self.assertEqual(len(rels), 1)
         r = rels[0]
         self.assertIsInstance(r, coramin.relaxations.PWXSquaredRelaxationData)
-        self.assertIn(m.p, ComponentSet(identify_components(m.aux_cons[1].body, [_ParamData, SimpleParam])))
+        self.assertIn(m.p, ComponentSet(identify_components(m.aux_cons[1].body, [_ParamData, ScalarParam])))
 
     def test_exp(self):
         self.helper(func=pe.exp, param_val=1)
