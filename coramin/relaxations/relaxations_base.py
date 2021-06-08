@@ -49,6 +49,7 @@ class BaseRelaxationData(_BlockData):
         self._oa_points = list()  # List of ComponentMap. Each entry in the list specifies a point at which an outer
                                   # approximation cut should be built for convex/concave constraints.
         self._saved_oa_points = list()
+        self._oa_stack_map = dict()
         self._cuts = None
         self._use_linear_relaxation = True
         self.large_eval_tol = math.inf
@@ -292,11 +293,15 @@ class BaseRelaxationData(_BlockData):
             var_values = pe.ComponentMap(var_values)
         self._oa_points.append(var_values)
 
-    def push_oa_points(self):
+    def push_oa_points(self, key=None):
         """
         Save the current list of OA points for later use through pop_oa_points().
         """
-        self._saved_oa_points.append([pe.ComponentMap(i) for i in self._oa_points])
+        to_save = [pe.ComponentMap(i) for i in self._oa_points]
+        if key is not None:
+            self._oa_stack_map[key] = to_save
+        else:
+            self._saved_oa_points.append(to_save)
 
     def clear_oa_points(self):
         """
@@ -304,11 +309,14 @@ class BaseRelaxationData(_BlockData):
         """
         self._oa_points = list()
 
-    def pop_oa_points(self):
+    def pop_oa_points(self, key=None):
         """
         Use the most recently saved list of OA points
         """
-        self._oa_points = self._saved_oa_points.pop(-1)
+        if key is None:
+            self._oa_points = self._saved_oa_points.pop(-1)
+        else:
+            self._oa_points = self._oa_stack_map.pop(key)
 
     def add_cut(self, keep_cut=True, check_violation=False, feasibility_tol=1e-8, add_cut_to_persistent_solvers=True):
         """
@@ -456,10 +464,13 @@ class BasePWRelaxationData(BaseRelaxationData):
         for var, pts in self._partitions.items():
             lb, ub = tuple(_get_bnds_list(var))
 
-            pts = [v for v in pts if (lb < v < ub)]
-            pts.insert(0, lb)
-            pts.append(ub)
-            self._partitions[var] = pts
+            new_pts = list()
+            new_pts.append(lb)
+            for val in pts[1:-1]:
+                if lb < val < ub:
+                    new_pts.append(val)
+            new_pts.append(ub)
+            self._partitions[var] = new_pts
 
     def get_active_partitions(self):
         ans = ComponentMap()

@@ -32,8 +32,10 @@ jobs:
         python setup.py develop
     - name: Test with nose
       run: |
-        nosetests -v --nologcapture --with-coverage --cover-xml --with-doctest --doctest-extension=.rst --cover-package=coramin coramin
+        nosetests -v -a '!parallel' -a n_procs=all -a n_procs=1 --with-coverage --cover-package=coramin --with-doctest --doctest-extension=.rst  --cover-xml coramin
         coverage report -m
+        mpirun -np 2 -oversubscribe nosetests -a parallel,n_procs=all -a parallel,n_procs=2 parapint
+        mpirun -np 3 -oversubscribe nosetests -a parallel,n_procs=all -a parallel,n_procs=3 parapint
     - name: upload coverage
       uses: codecov/codecov-action@v1
       with:
