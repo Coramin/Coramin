@@ -28,7 +28,6 @@ jobs:
         pip install -i https://pypi.gurobi.com gurobipy
         conda install openmpi pymumps ipopt --no-update-deps
         pip install mpi4py
-        conda install wntr --no-update-deps
         pip install metis
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop

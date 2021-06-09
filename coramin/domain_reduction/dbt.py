@@ -8,7 +8,7 @@ from .filters import aggressive_filter
 import pyomo.environ as pe
 from pyomo.core.expr.visitor import identify_variables
 from pyomo.common.collections import ComponentSet
-from wntr.utils.ordered_set import OrderedSet
+from pyomo.common.collections.orderedset import OrderedSet
 from coramin.relaxations.iterators import relaxation_data_objects, nonrelaxation_component_data_objects
 from pyomo.core.expr.visitor import replace_expressions
 import logging
