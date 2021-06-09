@@ -14,7 +14,7 @@ class TestBaseRelaxation(unittest.TestCase):
         m.rel.build(x=m.x, aux_var=m.y)
         m.obj = pe.Objective(expr=m.y)
 
-        opt = pe.SolverFactory('cplex_persistent')
+        opt = pe.SolverFactory('gurobi_persistent')
         opt.set_instance(m)
         m.rel.add_persistent_solver(opt)
 
