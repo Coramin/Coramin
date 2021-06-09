@@ -38,7 +38,6 @@ jobs:
     - name: Run parallel tests
       run: |
         mpirun -np 2 -oversubscribe nosetests -a parallel,n_procs=all -a parallel,n_procs=2 coramin
-        mpirun -np 3 -oversubscribe nosetests -a parallel,n_procs=all -a parallel,n_procs=3 coramin
     - name: upload coverage
       uses: codecov/codecov-action@v1
       with:
