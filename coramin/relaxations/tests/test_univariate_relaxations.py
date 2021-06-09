@@ -69,7 +69,7 @@ class TestUnivariate(unittest.TestCase):
                 m.c.build(x=m.x, aux_var=m.aux, relaxation_side=relaxation_side)
             m.p = pe.Param(mutable=True, initialize=0)
             m.c2 = pe.Constraint(expr=m.x == m.p)
-            opt = pe.SolverFactory('cplex_persistent')
+            opt = pe.SolverFactory('gurobi_persistent')
             for num_segments in num_segments_list:
                 segment_points = compute_k_segment_points(m.x, num_segments)
                 m.c.clear_partitions()

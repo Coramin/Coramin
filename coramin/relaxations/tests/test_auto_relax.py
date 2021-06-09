@@ -879,7 +879,7 @@ class TestUnivariate(unittest.TestCase):
             self.assertEqual(r.relaxation_side, expected_relaxation_side)
             m.p = pe.Param(mutable=True, initialize=0)
             m.c2 = pe.Constraint(expr=m.x == m.p)
-            opt = pe.SolverFactory('cplex_persistent')
+            opt = pe.SolverFactory('gurobi_persistent')
             opt.set_instance(m)
             for _x in [float(i) for i in np.linspace(lb, ub, 10)]:
                 m.p.value = _x

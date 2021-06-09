@@ -8,7 +8,7 @@ from .filters import aggressive_filter
 import pyomo.environ as pe
 from pyomo.core.expr.visitor import identify_variables
 from pyomo.common.collections import ComponentSet
-from wntr.utils.ordered_set import OrderedSet
+from pyomo.common.collections.orderedset import OrderedSet
 from coramin.relaxations.iterators import relaxation_data_objects, nonrelaxation_component_data_objects
 from pyomo.core.expr.visitor import replace_expressions
 import logging
@@ -779,6 +779,17 @@ class DBTInfo(object):
         self.num_vars_successful = None
         self.num_vars_filtered = None
 
+    def __str__(self):
+        s = f'num_coupling_vars_to_tighten: {self.num_coupling_vars_to_tighten}\n'
+        s += f'num_coupling_vars_attempted: {self.num_coupling_vars_attempted}\n'
+        s += f'num_coupling_vars_successful: {self.num_coupling_vars_successful}\n'
+        s += f'num_coupling_vars_filtered: {self.num_coupling_vars_filtered}\n'
+        s += f'num_vars_to_tighten: {self.num_vars_to_tighten}\n'
+        s += f'num_vars_attempted: {self.num_vars_attempted}\n'
+        s += f'num_vars_successful: {self.num_vars_successful}\n'
+        s += f'num_vars_filtered: {self.num_vars_filtered}\n'
+        return s
+
 
 def _update_var_bounds(varlist, new_lower_bounds, new_upper_bounds, feasibility_tol, safety_tol, max_acceptable_bound):
     for ndx, v in enumerate(varlist):
@@ -831,7 +842,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 filter_method=FilterMethod.AGGRESSIVE, time_limit=math.inf,
                 objective_bound=None, with_progress_bar=False, parallel=False,
                 vars_to_tighten_by_block=None, feasibility_tol=0,
-                safety_tol=0, max_acceptable_bound=math.inf):
+                safety_tol=0, max_acceptable_bound=math.inf, update_relaxations_between_stages=True):
     """This function performs optimization-based bounds tightening (OBBT) with a decomposition scheme.
 
     Parameters
@@ -892,6 +903,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         If the upper bound computed for a variable is larger than max_acceptable_bound, then the 
         computed bound will be rejected. If the lower bound computed for a variable is less than 
         -max_acceptable_bound, then the computed bound will be rejected.
+    update_relaxations_between_stages: bool
+        This is meant for unit testing only and should not be modified
 
     Returns
     -------
@@ -931,6 +944,13 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             _method = 'leaves'
         vars_to_tighten_by_block = collect_vars_to_tighten_by_block(relaxation, _method)
 
+    var_to_relaxation_map = pe.ComponentMap()
+    for r in relaxation_data_objects(relaxation, descend_into=True, active=True):
+        for v in r.get_rhs_vars():
+            if v not in var_to_relaxation_map:
+                var_to_relaxation_map[v] = list()
+            var_to_relaxation_map[v].append(r)
+
     num_stages = relaxation.num_stages()
 
     for stage in range(num_stages):
@@ -962,6 +982,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         full_space_ub_vars = None
     
     for stage in range(num_stages):
+        logger.info(f'Performing DBT on stage {stage+1} of {num_stages}')
         if time.time() - t0 >= time_limit:
             break
         
@@ -969,6 +990,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
         logger.debug('DBT stage {0} of {1} with {1} blocks'.format(stage, num_stages, len(stage_blocks)))
 
         for block_ndx, block in enumerate(stage_blocks):
+            logger.info(f'performing DBT on block {block_ndx+1} of {len(stage_blocks)} in stage {stage+1}')
             if time.time() - t0 >= time_limit:
                 break
 
@@ -1011,7 +1033,22 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
                               update_bounds=False, parallel=parallel, collect_obbt_info=True)
-            lower, upper, obbt_info = res
+            lower, unused_upper, obbt_info = res
+            if block.is_leaf():
+                dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
+                dbt_info.num_vars_successful += obbt_info.num_successful_problems
+            else:
+                dbt_info.num_coupling_vars_attempted += obbt_info.num_problems_attempted
+                dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
+
+            logger.debug('done tightening lbs')
+
+            res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
+                              objective_bound=_ub, with_progress_bar=with_progress_bar,
+                              direction='ubs', time_limit=(time_limit - (time.time() - t0)),
+                              update_bounds=False, parallel=parallel, collect_obbt_info=True)
+
+            unused_lower, upper, obbt_info = res
             if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
                 dbt_info.num_vars_successful += obbt_info.num_successful_problems
@@ -1020,26 +1057,24 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
 
             _update_var_bounds(varlist=lb_vars, new_lower_bounds=lower,
+                               new_upper_bounds=unused_upper, feasibility_tol=feasibility_tol,
+                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
+
+            _update_var_bounds(varlist=ub_vars, new_lower_bounds=unused_lower,
                                new_upper_bounds=upper, feasibility_tol=feasibility_tol,
                                safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
 
-            logger.debug('done tightening lbs')
-
-            res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
-                              objective_bound=_ub, with_progress_bar=with_progress_bar,
-                              direction='ubs', time_limit=(time_limit - (time.time() - t0)),
-                              update_bounds=False, parallel=parallel, collect_obbt_info=True)
-            lower, upper, obbt_info = res
-            if block.is_leaf():
-                dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
-                dbt_info.num_vars_successful += obbt_info.num_successful_problems
-            else:
-                dbt_info.num_coupling_vars_attempted += obbt_info.num_problems_attempted
-                dbt_info.num_coupling_vars_successful += obbt_info.num_successful_problems
-
-            _update_var_bounds(varlist=ub_vars, new_lower_bounds=lower,
-                               new_upper_bounds=upper, feasibility_tol=feasibility_tol,
-                               safety_tol=safety_tol, max_acceptable_bound=max_acceptable_bound)
+            if update_relaxations_between_stages:
+                # this is needed to ensure consistency for parallel computing; this accounts
+                # for side effects from the OBBT problems; in particular, if the solver ever
+                # rebuilds relaxations, then the processes could become out of sync without
+                # this code
+                all_tightened_vars = ComponentSet(lb_vars)
+                all_tightened_vars.update(ub_vars)
+                for v in all_tightened_vars:
+                    if v in var_to_relaxation_map:
+                        for r in var_to_relaxation_map[v]:
+                            r.rebuild()
 
             logger.debug('done tightening ubs')
 

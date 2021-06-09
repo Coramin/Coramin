@@ -14,6 +14,8 @@ from egret.data.model_data import ModelData
 from egret.models.acopf import create_rsv_acopf_model
 import os
 from coramin.utils.pyomo_utils import get_objective
+import filecmp
+from nose.plugins.attrib import attr
 
 
 class TestTreeBlock(unittest.TestCase):
@@ -621,7 +623,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('cplex_persistent')
+        opt = pe.SolverFactory('gurobi_persistent')
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.FULL_SPACE, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -636,7 +638,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('cplex_persistent')
+        opt = pe.SolverFactory('gurobi_persistent')
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.LEAVES, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -651,7 +653,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('cplex_persistent')
+        opt = pe.SolverFactory('gurobi_persistent')
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -666,7 +668,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('cplex_persistent')
+        opt = pe.SolverFactory('gurobi_persistent')
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.AGGRESSIVE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -676,3 +678,89 @@ class TestDBT(unittest.TestCase):
         self.assertAlmostEqual(b1.x.ub, 1)
         self.assertAlmostEqual(b1.y.lb, -1)
         self.assertAlmostEqual(b1.y.ub, 1)
+
+
+class TestDBTWithECP(unittest.TestCase):
+    def create_model(self):
+        m = coramin.domain_reduction.TreeBlock(concrete=True)
+        m.setup(children_keys=[1, 2])
+        m.children[1].setup(children_keys=[1, 2])
+        m.children[2].setup(children_keys=[1, 2])
+        m.children[1].children[1].setup(children_keys=list())
+        m.children[1].children[2].setup(children_keys=list())
+        m.children[2].children[1].setup(children_keys=list())
+        m.children[2].children[2].setup(children_keys=list())
+
+        b1 = m.children[1].children[1]
+        b2 = m.children[1].children[2]
+        b3 = m.children[2].children[1]
+        b4 = m.children[2].children[2]
+
+        b1.x1 = pe.Var(bounds=(0.5, 5))
+        b1.x2 = pe.Var(bounds=(0.5, 5))
+        b1.x3 = pe.Var(bounds=(0.5, 5))
+
+        b2.x4 = pe.Var(bounds=(0.5, 5))
+        b2.x5 = pe.Var(bounds=(0.5, 5))
+        b2.x6 = pe.Var(bounds=(0.5, 5))
+
+        b3.x7 = pe.Var(bounds=(0.5, 5))
+        b3.x8 = pe.Var(bounds=(0.5, 5))
+        b3.x9 = pe.Var(bounds=(0.5, 5))
+
+        b4.x10 = pe.Var(bounds=(0.5, 5))
+        b4.x11 = pe.Var(bounds=(0.5, 5))
+        b4.x12 = pe.Var(bounds=(0.5, 5))
+
+        b1.c1 = pe.Constraint(expr=b1.x1 == b1.x2 ** 2 - b1.x3 ** 2)
+        b1.c2 = pe.Constraint(expr=b1.x2 == pe.log(b1.x3) + b1.x3)
+
+        b2.c1 = pe.Constraint(expr=b2.x4 == b2.x5 * b2.x6)
+        b2.c2 = pe.Constraint(expr=b2.x5 == b2.x6 ** 2)
+
+        b3.c1 = pe.Constraint(expr=b3.x7 == pe.log(b3.x8) - pe.log(b3.x9))
+        b3.c2 = pe.Constraint(expr=b3.x8 + b3.x9 == 4)
+
+        b4.c1 = pe.Constraint(expr=b4.x10 == b4.x11 * b4.x12 - b4.x12)
+        b4.c2 = pe.Constraint(expr=b4.x11 + b4.x12 == 4)
+
+        m.children[1].linking_constraints.add(b1.x3 == b2.x6)
+        m.children[2].linking_constraints.add(b3.x9 == b4.x10)
+        m.linking_constraints.add(b1.x3 == b3.x9)
+
+        m.obj = pe.Objective(
+            expr=b1.x1 + b1.x2 + b1.x3 + b2.x4 + b2.x5 + b2.x6 + b3.x7 + b3.x8 + b3.x9 + b4.x10 + b4.x11 + b4.x12)
+
+        return m
+
+    @attr(parallel=True, n_procs=[2, 3])
+    def test_bounds_tightening(self):
+        from mpi4py import MPI
+
+        comm: MPI.Comm = MPI.COMM_WORLD
+        rank = comm.Get_rank()
+
+        m = self.create_model()
+        coramin.relaxations.relax(m, descend_into=True, in_place=True)
+        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
+        opt.options.keep_cuts = False
+        coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
+                                             parallel=True)
+        m.write(f'rank{rank}.lp')
+        if rank == 0:
+            self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
+        else:
+            self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'))
+
+        # the next bit of code is needed to ensure the above test actually tests what we think it is testing
+        m = self.create_model()
+        coramin.relaxations.relax(m, descend_into=True, in_place=True)
+        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
+        opt.options.keep_cuts = False
+        coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
+                                             parallel=True, update_relaxations_between_stages=False)
+        m.write(f'rank{rank}.lp')
+        if rank == 0:
+            self.assertFalse(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
+        else:
+            self.assertFalse(filecmp.cmp('rank0.lp', f'rank{rank}.lp'))
