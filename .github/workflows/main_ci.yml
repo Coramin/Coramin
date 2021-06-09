@@ -26,8 +26,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyomo numpy scipy nose codecov coverage cplex sympy
         pip install -i https://pypi.gurobi.com gurobipy
-        conda install mpi4py metis ipopt wntr networkx --no-update-deps
-        pip install metis
+        conda install openmpi metis ipopt wntr networkx --no-update-deps
+        pip install metis mpi4py
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
     - name: Test with nose
