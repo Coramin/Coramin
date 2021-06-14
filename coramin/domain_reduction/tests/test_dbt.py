@@ -751,6 +751,7 @@ class TestDBTWithECP(unittest.TestCase):
             self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
         else:
             self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'))
+        self.assertTrue(False)
 
         # the next bit of code is needed to ensure the above test actually tests what we think it is testing
         m = self.create_model()
