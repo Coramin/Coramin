@@ -747,10 +747,11 @@ class TestDBTWithECP(unittest.TestCase):
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True)
         m.write(f'rank{rank}.lp')
+        comm.Barrier()
         if rank == 0:
-            self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
+            self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'), f'rank {rank}')
         else:
-            self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'))
+            self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'), f'rank {rank}')
 
         # the next bit of code is needed to ensure the above test actually tests what we think it is testing
         m = self.create_model()
@@ -760,6 +761,7 @@ class TestDBTWithECP(unittest.TestCase):
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True, update_relaxations_between_stages=False)
         m.write(f'rank{rank}.lp')
+        comm.Barrier()
         if rank == 0:
             self.assertFalse(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
         else:
