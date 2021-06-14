@@ -748,9 +748,11 @@ class TestDBTWithECP(unittest.TestCase):
                                              parallel=True)
         m.write(f'rank{rank}.lp')
         if rank == 0:
-            self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'))
+            self.assertTrue(filecmp.cmp('rank1.lp', f'rank{rank}.lp'), f'rank {rank}')
+            self.assertTrue(filecmp.cmp(f'rank{rank}.lp', 'rank1.lp'), f'rank {rank}')
         else:
-            self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'))
+            self.assertTrue(filecmp.cmp('rank0.lp', f'rank{rank}.lp'), f'rank {rank}')
+            self.assertTrue(filecmp.cmp(f'rank{rank}.lp', 'rank0.lp'), f'rank {rank}')
         self.assertTrue(False, f'rank {rank}')
 
         # the next bit of code is needed to ensure the above test actually tests what we think it is testing

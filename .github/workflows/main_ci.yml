@@ -32,10 +32,10 @@ jobs:
         pip install metis
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
-    - name: Test with nose
-      run: |
-        nosetests -v -a '!parallel' -a n_procs=all -a n_procs=1 --with-coverage --cover-package=coramin --with-doctest --doctest-extension=.rst  --cover-xml coramin
-        coverage report -m
+    #- name: Test with nose
+    #  run: |
+    #    nosetests -v -a '!parallel' -a n_procs=all -a n_procs=1 --with-coverage --cover-package=coramin --with-doctest --doctest-extension=.rst  --cover-xml coramin
+    #    coverage report -m
     - name: Run parallel tests
       run: |
         mpirun -np 2 -oversubscribe nosetests -a parallel,n_procs=all -a parallel,n_procs=2 coramin
