@@ -20,6 +20,8 @@ from pyomo.core.base.block import declare_custom_block, _BlockData
 from coramin.utils.pyomo_utils import get_objective
 from pyomo.core.base.var import _GeneralVarData
 from coramin.relaxations.copy_relaxation import copy_relaxation_with_local_data
+from coramin.relaxations.relaxations_base import BaseRelaxationData
+from coramin.utils import RelaxationSide
 
 
 logger = logging.getLogger(__name__)
@@ -667,7 +669,11 @@ def collect_vars_to_tighten_from_graph(graph):
 
     for n in graph.nodes():
         if n.is_rel():
-            rel = n.comp
+            rel: BaseRelaxationData = n.comp
+            if rel.is_rhs_convex() and rel.relaxation_side == RelaxationSide.UNDER and not rel.use_linear_relaxation:
+                continue
+            if rel.is_rhs_concave() and rel.relaxation_side == RelaxationSide.OVER and not rel.use_linear_relaxation:
+                continue
             vars_to_tighten.update(rel.get_rhs_vars())
         elif n.is_var():
             v = n.comp
@@ -1024,6 +1030,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 lb_vars = list(vars_to_tighten)
                 ub_vars = list(vars_to_tighten)
 
+            logger.debug(f'performing OBBT (LB) on variables {str([str(i) for i in lb_vars])}')
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=lb_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
@@ -1038,6 +1045,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             logger.debug('done tightening lbs')
 
+            logger.debug(f'performing OBBT (UB) on variables {str([str(i) for i in ub_vars])}')
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='ubs', time_limit=(time_limit - (time.time() - t0)),
