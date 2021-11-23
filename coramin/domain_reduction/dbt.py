@@ -525,6 +525,7 @@ def build_pyomo_model_from_graph(graph, block):
     for r_name, r in zip(rel_names, rels):
         new_rel = copy_relaxation_with_local_data(r.comp, var_map)
         setattr(block.rels, r_name, new_rel)
+        new_rel.rebuild()
         component_map[r.comp] = new_rel
         r.replacement_comp = new_rel
 
