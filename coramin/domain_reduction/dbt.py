@@ -20,6 +20,8 @@ from pyomo.core.base.block import declare_custom_block, _BlockData
 from coramin.utils.pyomo_utils import get_objective
 from pyomo.core.base.var import _GeneralVarData
 from coramin.relaxations.copy_relaxation import copy_relaxation_with_local_data
+from coramin.relaxations.relaxations_base import BaseRelaxationData
+from coramin.utils import RelaxationSide
 
 
 logger = logging.getLogger(__name__)
@@ -523,6 +525,7 @@ def build_pyomo_model_from_graph(graph, block):
     for r_name, r in zip(rel_names, rels):
         new_rel = copy_relaxation_with_local_data(r.comp, var_map)
         setattr(block.rels, r_name, new_rel)
+        new_rel.rebuild()
         component_map[r.comp] = new_rel
         r.replacement_comp = new_rel
 
@@ -667,7 +670,11 @@ def collect_vars_to_tighten_from_graph(graph):
 
     for n in graph.nodes():
         if n.is_rel():
-            rel = n.comp
+            rel: BaseRelaxationData = n.comp
+            if rel.is_rhs_convex() and rel.relaxation_side == RelaxationSide.UNDER and not rel.use_linear_relaxation:
+                continue
+            if rel.is_rhs_concave() and rel.relaxation_side == RelaxationSide.OVER and not rel.use_linear_relaxation:
+                continue
             vars_to_tighten.update(rel.get_rhs_vars())
         elif n.is_var():
             v = n.comp
@@ -963,8 +970,6 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 dbt_info.num_coupling_vars_to_tighten += 2 * len(vars_to_tighten)
 
     if obbt_method == OBBTMethod.FULL_SPACE:
-        if using_persistent_solver:
-            solver.set_instance(relaxation)
         all_vars_to_tighten = ComponentSet()
         for block, block_vars_to_tighten in vars_to_tighten_by_block.items():
             all_vars_to_tighten.update(block_vars_to_tighten)
@@ -1005,9 +1010,6 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                     _ub = objective_bound
                 else:
                     _ub = None
-            if using_persistent_solver and obbt_method != OBBTMethod.FULL_SPACE:
-                # This is done above, just once, for full space
-                solver.set_instance(block_to_tighten_with)
                     
             vars_to_tighten = vars_to_tighten_by_block[block]
 
@@ -1029,6 +1031,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
                 lb_vars = list(vars_to_tighten)
                 ub_vars = list(vars_to_tighten)
 
+            logger.debug(f'performing OBBT (LB) on variables {str([str(i) for i in lb_vars])}')
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=lb_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
@@ -1043,6 +1046,7 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
 
             logger.debug('done tightening lbs')
 
+            logger.debug(f'performing OBBT (UB) on variables {str([str(i) for i in ub_vars])}')
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='ubs', time_limit=(time_limit - (time.time() - t0)),

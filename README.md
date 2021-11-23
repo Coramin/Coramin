@@ -49,4 +49,4 @@ Coramin's factorable programming approach to generating relaxations.
 
 ## Documentation
 
-Coming soon...
+Coming soon..
