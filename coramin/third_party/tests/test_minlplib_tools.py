@@ -18,7 +18,7 @@ class TestMINLPLibTools(unittest.TestCase):
         coramin.third_party.get_minlplib_instancedata()
         self.assertTrue(os.path.exists(os.path.join(current_dir, 'minlplib', 'instancedata.csv')))
         cases = coramin.third_party.filter_minlplib_instances()
-        self.assertEqual(len(cases), 1744)
+        self.assertEqual(len(cases), 1752)
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
@@ -26,7 +26,7 @@ class TestMINLPLibTools(unittest.TestCase):
         current_dir = this_file_dir()
         coramin.third_party.get_minlplib_instancedata(target_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
 
-        total_cases = 1744
+        total_cases = 1752
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_formats='osil',
                                                               acceptable_probtype='QCQP',
@@ -138,7 +138,7 @@ class TestMINLPLibTools(unittest.TestCase):
 
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_objcurvature=['linear', 'convex'])
-        self.assertEqual(len(cases), 1363)  # regression
+        self.assertEqual(len(cases), 1367)  # regression
         
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
@@ -147,7 +147,7 @@ class TestMINLPLibTools(unittest.TestCase):
         current_dir = this_file_dir()
         coramin.third_party.get_minlplib(download_dir=os.path.join(current_dir, 'minlplib', 'osil'))
         files = os.listdir(os.path.join(current_dir, 'minlplib', 'osil'))
-        self.assertEqual(len(files), 1743)
+        self.assertEqual(len(files), 1751)
         for i in files:
             self.assertTrue(i.endswith('.osil'))
         for i in os.listdir(os.path.join(current_dir, 'minlplib', 'osil')):
