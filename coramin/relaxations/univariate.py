@@ -101,7 +101,7 @@ class _FxExpr(object):
         orig_xval = self._x.value
         self._x.value = _xval
         res = pyo.value(self._expr)
-        self._x.value = orig_xval
+        self._x.set_value(orig_xval, skip_validation=True)
         return res
 
     def deriv(self, _xval):
@@ -109,7 +109,7 @@ class _FxExpr(object):
         orig_xval = self._x.value
         self._x.value = _xval
         res = pyo.value(self._deriv)
-        self._x.value = orig_xval
+        self._x.set_value(orig_xval, skip_validation=True)
         return res
 
     def __call__(self, _xval):

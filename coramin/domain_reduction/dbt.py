@@ -505,7 +505,7 @@ def build_pyomo_model_from_graph(graph, block):
         new_v.domain = v.comp.domain
         if v.comp.is_fixed():
             new_v.fix(v.comp.value)
-        new_v.value = v.comp.value
+        new_v.set_value(v.comp.value, skip_validation=True)
         v.replacement_comp = new_v
 
     var_map = {id(k): v for k, v in component_map.items()}

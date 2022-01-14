@@ -31,7 +31,7 @@ class _ValueManager(object):
 
     def pop_values(self):
         for v, val in self.orig_values.items():
-            v.value = val
+            v.set_value(val, skip_validation=True)
 
 
 def _load_var_values(var_value_map):

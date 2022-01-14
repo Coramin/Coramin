@@ -65,7 +65,7 @@ def _get_aux_var(parent_block, expr):
     except ArithmeticError:
         expr_value = None
     if expr_value is not None and pe.value(_aux_var, exception=False) is None:
-        _aux_var.set_value(expr_value)
+        _aux_var.set_value(expr_value, skip_validation=True)
     return _aux_var
 
 

@@ -69,7 +69,7 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
         self.vars_to_tighten.
     """
     for v in model.component_data_objects(ctype=pyo.Var, active=None, sort=True, descend_into=True):
-        v.value = initial_var_values[v]
+        v.set_value(initial_var_values[v], skip_validation=True)
 
     # remove the obj upper bound constraint
     using_persistent_solver = False
