@@ -1,6 +1,6 @@
 import numpy as np
 try:
-    import matplotlib.pyplot as plt
+    import plotly.graph_objects as go
 except ImportError:
     pass
 import pyomo.environ as pe
@@ -59,7 +59,7 @@ def plot_relaxation(m, relaxation, solver, show_plot=True, num_pts=100):
     for _x in x_list:
         x.value = float(_x)
         w_true.append(pe.value(rhs_expr))
-    plt.plot(x_list, w_true, label=str(rhs_expr))
+    plotly_data = [go.Scatter(x=x_list, y=w_true, name=str(rhs_expr))]
 
     m._plotting_objective = pe.Objective(expr=w)
     if using_persistent_solver:
@@ -67,7 +67,7 @@ def plot_relaxation(m, relaxation, solver, show_plot=True, num_pts=100):
 
     if relaxation.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
         w_min = _solve_loop(m, x, w, x_list, using_persistent_solver, solver)
-        plt.plot(x_list, w_min, label='underestimator')
+        plotly_data.append(go.Scatter(x=x_list, y=w_min, name='underestimator'))
 
     del m._plotting_objective
     m._plotting_objective = pe.Objective(expr=w, sense=pe.maximize)
@@ -76,13 +76,11 @@ def plot_relaxation(m, relaxation, solver, show_plot=True, num_pts=100):
 
     if relaxation.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
         w_max = _solve_loop(m, x, w, x_list, using_persistent_solver, solver)
-        plt.plot(x_list, w_max, label='overestimator')
+        plotly_data.append(go.Scatter(x=x_list, y=w_max, name='overestimator'))
 
-    plt.legend()
-    plt.xlabel(x.name)
-    plt.ylabel(w.name)
+    fig = go.Figure(data=plotly_data)
     if show_plot:
-        plt.show()
+        fig.show()
 
     x.unfix()
     x.value = orig_xval

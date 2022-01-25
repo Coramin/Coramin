@@ -21,7 +21,7 @@ class MultivariateRelaxationData(BaseRelaxationData):
         return self._aux_var_ref.get_component()
 
     def get_rhs_vars(self):
-        return list(self._xs)
+        return self._xs
 
     def get_rhs_expr(self):
         return self._f_x_expr
@@ -57,7 +57,7 @@ class MultivariateRelaxationData(BaseRelaxationData):
             relaxation_side = RelaxationSide.OVER
         self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
                         use_linear_relaxation=use_linear_relaxation, large_eval_tol=large_eval_tol)
-        self._xs = list(identify_variables(f_x_expr, include_fixed=False))
+        self._xs = tuple(identify_variables(f_x_expr, include_fixed=False))
         self._aux_var_ref.set_component(aux_var)
         self._f_x_expr = f_x_expr
         lb_oa_pt = pe.ComponentMap()
