@@ -622,19 +622,28 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         else:
             return False
 
+    def _check_valid_domain_for_relaxation(self) -> bool:
+        lb, ub = _get_bnds_tuple(self._x)
+        if lb > -math.inf and ub < math.inf:
+            return True
+        return False
+
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
         super(PWUnivariateRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
                                                         ensure_oa_at_vertices=ensure_oa_at_vertices)
         if not build_nonlinear_constraint:
-            if self._needs_secant():
-                if len(self._partitions[self._x]) == 2:
-                    if self._secant is None:
+            if self._check_valid_domain_for_relaxation():
+                if self._needs_secant():
+                    if len(self._partitions[self._x]) == 2:
+                        if self._secant is None:
+                            self._remove_relaxation()
+                            self._build_secant()
+                        self._update_secant()
+                    else:
                         self._remove_relaxation()
-                        self._build_secant()
-                    self._update_secant()
+                        self._build_pw_secant()
                 else:
                     self._remove_relaxation()
-                    self._build_pw_secant()
             else:
                 self._remove_relaxation()
 
@@ -851,9 +860,6 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         self._secant_index = None
         self._secant_exprs = None
 
-    def _check_valid_domain_for_relaxation(self) -> bool:
-        raise NotImplementedError('This should be implemented by a derived class')
-
     def _pw_func(self):
         raise NotImplementedError('This should be implemented by a derived class')
 
@@ -881,6 +887,8 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
                         self._pw_func()(b=self._pw_secant, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
                                         relaxation_side=self.relaxation_side,
                                         safety_tol=self.safety_tol)
+            else:
+                self._remove_relaxation()
 
     def _build_relaxation(self):
         del self._secant_index, self._secant_slope, self._secant_intercept, self._secant
@@ -1018,12 +1026,6 @@ class PWArctanRelaxationData(SinArctanBaseRelaxationData):
 
     def _rhs_func(self, x):
         return pe.atan(x)
-
-    def _check_valid_domain_for_relaxation(self) -> bool:
-        lb, ub = _get_bnds_tuple(self._x)
-        if lb > -math.inf and ub < math.inf:
-            return True
-        return False
 
     def _pw_func(self):
         return pw_arctan_relaxation
