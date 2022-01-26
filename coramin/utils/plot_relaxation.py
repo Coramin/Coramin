@@ -31,7 +31,7 @@ def _solve_loop(m, x, w, x_list, using_persistent_solver, solver):
 
 
 def plot_relaxation(m, relaxation, solver, show_plot=True, num_pts=100):
-    if len(relaxation.get_rhs_vars()) != 1:
+    if len(relaxation.get_rhs_vars()) > 2:
         raise NotImplementedError('Plotting is not supported for {0}.'.format(type(relaxation)))
     
     using_persistent_solver = isinstance(solver, PersistentSolver)

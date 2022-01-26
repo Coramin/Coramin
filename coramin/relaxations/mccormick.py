@@ -1,10 +1,15 @@
 import logging
 import pyomo.environ as pyo
-from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
+from coramin.utils.coramin_enums import RelaxationSide
 from .custom_block import declare_custom_block
-from .relaxations_base import BasePWRelaxationData, ComponentWeakRef
+from .relaxations_base import BasePWRelaxationData, ComponentWeakRef, _check_cut
 import math
-from ._utils import var_info_str, bnds_info_str, x_pts_info_str, check_var_pts, _get_bnds_list
+from ._utils import check_var_pts, _get_bnds_list, _get_bnds_tuple
+from pyomo.core.base.param import IndexedParam
+from pyomo.core.base.constraint import IndexedConstraint
+from pyomo.core.expr.numeric_expr import LinearExpression
+from typing import Optional, Dict
+pe = pyo
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +178,13 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         self._x2ref = ComponentWeakRef(None)
         self._aux_var_ref = ComponentWeakRef(None)
         self._f_x_expr = None
+        self._mc_index = None
+        self._v_index = None
+        self._slopes: Optional[IndexedParam] = None
+        self._intercepts: Optional[IndexedParam] = None
+        self._mccormicks: Optional[IndexedConstraint] = None
+        self._mc_exprs: Dict[int, LinearExpression] = dict()
+        self._pw = None
 
     @property
     def _x1(self):
@@ -195,7 +207,18 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
     def vars_with_bounds_in_relaxation(self):
         return [self._x1, self._x2]
 
-    def set_input(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+    def _remove_relaxation(self):
+        del self._slopes, self._intercepts, self._mccormicks, self._pw, self._mc_index, self._v_index
+        self._mc_index = None
+        self._v_index = None
+        self._slopes = None
+        self._intercepts = None
+        self._mccormicks = None
+        self._mc_exprs = dict()
+        self._pw = None
+
+    def set_input(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, large_coef=1e5, small_coef=1e-10,
+                  safety_tol=1e-10):
         """
         Parameters
         ----------
@@ -207,18 +230,20 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
             The "aux_var" auxillary variable that is replacing x1*x2
         relaxation_side : minlp.minlp_defn.RelaxationSide
             Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-        persistent_solvers: list
-            List of persistent solvers that should be updated when the relaxation changes
         """
-        self._set_input(relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                        use_linear_relaxation=True, large_eval_tol=math.inf)
+        super(PWMcCormickRelaxationData, self).set_input(relaxation_side=relaxation_side,
+                                                         use_linear_relaxation=True,
+                                                         large_coef=large_coef, small_coef=small_coef,
+                                                         safety_tol=safety_tol)
         self._x1ref.set_component(x1)
         self._x2ref.set_component(x2)
         self._aux_var_ref.set_component(aux_var)
         self._partitions[self._x1] = _get_bnds_list(self._x1)
         self._f_x_expr = x1 * x2
+        self._remove_relaxation()
 
-    def build(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None):
+    def build(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, large_coef=1e5, small_coef=1e-10,
+              safety_tol=1e-10):
         """
         Parameters
         ----------
@@ -230,17 +255,98 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
             The "aux_var" auxillary variable that is replacing x1*x2
         relaxation_side : minlp.minlp_defn.RelaxationSide
             Provide the desired side for the relaxation (OVER, UNDER, or BOTH)
-        persistent_solvers: list
-            List of persistent solvers that should be updated when the relaxation changes
         """
         self.set_input(x1=x1, x2=x2, aux_var=aux_var, relaxation_side=relaxation_side,
-                       persistent_solvers=persistent_solvers)
+                       large_coef=large_coef, small_coef=small_coef, safety_tol=safety_tol)
         self.rebuild()
 
-    def _build_relaxation(self):
-        _build_pw_mccormick_relaxation(b=self, x1=self._x1, x2=self._x2, aux_var=self._aux_var,
-                                       x1_pts=self._partitions[self._x1],
-                                       relaxation_side=self.relaxation_side)
+    def remove_relaxation(self):
+        super(PWMcCormickRelaxationData, self).remove_relaxation()
+        self._remove_relaxation()
+
+    def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
+        super(PWMcCormickRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
+                                                       ensure_oa_at_vertices=ensure_oa_at_vertices)
+        if not build_nonlinear_constraint:
+            if len(self._partitions[self._x1]) == 2:
+                if self._mccormicks is None:
+                    self._remove_relaxation()
+                    self._build_mccormicks()
+                self._update_mccormicks()
+            else:
+                self._remove_relaxation()
+                del self._pw
+                self._pw = pe.Block(concrete=True)
+                _build_pw_mccormick_relaxation(b=self._pw, x1=self._x1, x2=self._x2, aux_var=self._aux_var,
+                                               x1_pts=self._partitions[self._x1],
+                                               relaxation_side=self.relaxation_side)
+
+    def _build_mccormicks(self):
+        del self._mc_index, self._v_index, self._slopes, self._intercepts, self._mccormicks
+        self._mc_exprs = dict()
+        self._mc_index = pe.Set(initialize=[0, 1, 2, 3])
+        self._v_index = pe.Set(initialize=[1, 2])
+        self._slopes = IndexedParam(self._mc_index, self._v_index, mutable=True)
+        self._intercepts = IndexedParam(self._mc_index, mutable=True)
+        self._mccormicks = IndexedConstraint(self._mc_index)
+
+        if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}:
+            for ndx in [0, 1]:
+                e = LinearExpression(constant=self._intercepts[ndx],
+                                     linear_coefs=[self._slopes[ndx, 1], self._slopes[ndx, 2]],
+                                     linear_vars=[self._x1, self._x2])
+                self._mc_exprs[ndx] = e
+                self._mccormicks[ndx] = self._aux_var >= e
+
+        if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
+            for ndx in [2, 3]:
+                e = LinearExpression(constant=self._intercepts[ndx],
+                                     linear_coefs=[self._slopes[ndx, 1], self._slopes[ndx, 2]],
+                                     linear_vars=[self._x1, self._x2])
+                self._mc_exprs[ndx] = e
+                self._mccormicks[ndx] = self._aux_var <= e
+
+    def _check_expr(self, ndx):
+        if ndx in {0, 1}:
+            rel_side = RelaxationSide.UNDER
+        else:
+            rel_side = RelaxationSide.OVER
+        success, bad_var, bad_coef, err_msg = _check_cut(self._mc_exprs[ndx], too_small=self.small_coef,
+                                                         too_large=self.large_coef, relaxation_side=rel_side,
+                                                         safety_tol=self.safety_tol)
+        if not success:
+            self._log_bad_cut(bad_var, bad_coef, err_msg)
+            self._mccormicks[ndx].deactivate()
+        else:
+            self._mccormicks[ndx].activate()
+
+    def _update_mccormicks(self):
+        x1_lb, x1_ub = _get_bnds_tuple(self._x1)
+        x2_lb, x2_ub = _get_bnds_tuple(self._x2)
+
+        if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}:
+            self._slopes[0, 1].value = x2_lb
+            self._slopes[0, 2].value = x1_lb
+            self._intercepts[0].value = -x1_lb * x2_lb
+
+            self._slopes[1, 1].value = x2_ub
+            self._slopes[1, 2].value = x1_ub
+            self._intercepts[1].value = -x1_ub * x2_ub
+
+            self._check_expr(0)
+            self._check_expr(1)
+
+        if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
+            self._slopes[2, 1].value = x2_lb
+            self._slopes[2, 2].value = x1_ub
+            self._intercepts[2].value = -x1_ub * x2_lb
+
+            self._slopes[3, 1].value = x2_ub
+            self._slopes[3, 2].value = x1_lb
+            self._intercepts[3].value = -x1_lb * x2_ub
+
+            self._check_expr(2)
+            self._check_expr(3)
 
     def add_partition_point(self, value=None):
         """

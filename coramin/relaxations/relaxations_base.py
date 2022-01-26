@@ -67,7 +67,8 @@ class _OACut(object):
                var_vals: Sequence[float],
                relaxation_side: RelaxationSide,
                too_small: float,
-               too_large: float) -> Tuple[bool, Optional[_GeneralVarData], Optional[float], Optional[str]]:
+               too_large: float,
+               safety_tol: float) -> Tuple[bool, Optional[_GeneralVarData], Optional[float], Optional[str]]:
         res = (True, None, None, None)
         self.current_pt = var_vals
         orig_values = [i.value for i in self.expr_vars]
@@ -79,24 +80,15 @@ class _OACut(object):
                 der = pe.value(self.derivs[ndx])
                 offset_val -= der * v.value
                 self.coefficients[ndx].value = der
-                if abs(der) >= too_large:
-                    res = (False, v, der, None)
-                if 0 < abs(der) <= too_small:
-                    self.coefficients[ndx].value = 0
-                    if relaxation_side == RelaxationSide.UNDER:
-                        offset_val -= interval.mul(v.lb, v.ub, der, der)[0]
-                    elif relaxation_side == RelaxationSide.OVER:
-                        offset_val += interval.mul(v.lb, v.ub, der, der)[1]
-                    else:
-                        raise ValueError('relaxation_side should be either OVER or UNDER')
             self.offset.value = offset_val
-            if abs(offset_val) >= too_large:
-                res = (False, None, offset_val, None)
         except (OverflowError, ValueError, ZeroDivisionError) as e:
             res = (False, None, None, str(e))
         finally:
             for v, val in zip(self.expr_vars, orig_values):
                 v.set_value(val, skip_validation=True)
+        if res[0]:
+            res = _check_cut(self.cut_expr, too_small=too_small, too_large=too_large, relaxation_side=relaxation_side,
+                             safety_tol=safety_tol)
         return res
 
     def __repr__(self):
@@ -109,6 +101,31 @@ class _OACut(object):
         return self.__repr__()
 
 
+def _check_cut(cut: LinearExpression, too_small, too_large, relaxation_side, safety_tol):
+    res = (True, None, None, None)
+    for coef_p, v in zip(cut.linear_coefs, cut.linear_vars):
+        coef = coef_p.value
+        if abs(coef) >= too_large:
+            res = (False, v, coef, None)
+        elif 0 < abs(coef) <= too_small:
+            coef_p.value = 0
+            if relaxation_side == RelaxationSide.UNDER:
+                cut.constant.value = interval.add(cut.constant.value, cut.constant.value,
+                                                  *interval.mul(v.lb, v.ub, coef, coef))[0]
+            elif relaxation_side == RelaxationSide.OVER:
+                cut.constant.value = interval.add(cut.constant.value, cut.constant.value,
+                                                  *interval.mul(v.lb, v.ub, coef, coef))[1]
+            else:
+                raise ValueError('relaxation_side should be either UNDER or OVER')
+    if relaxation_side == RelaxationSide.UNDER:
+        cut.constant.value -= safety_tol
+    else:
+        cut.constant.value += safety_tol
+    if abs(cut.constant.value) >= too_large:
+        res = (False, None, cut.constant.value, None)
+    return res
+
+
 @declare_custom_block(name='BaseRelaxation')
 class BaseRelaxationData(_BlockData):
     def __init__(self, component):
@@ -118,6 +135,7 @@ class BaseRelaxationData(_BlockData):
         self._large_coef = 1e5
         self._small_coef = 1e-10
         self._needs_rebuilt = True
+        self.safety_tol = 1e-10
 
         self._oa_points: Dict[Tuple[float, ...], _OACut] = dict()
         self._oa_param_indices: MutableMapping[_ParamData, int] = pe.ComponentMap()
@@ -133,11 +151,12 @@ class BaseRelaxationData(_BlockData):
 
     def set_input(self, relaxation_side=RelaxationSide.BOTH,
                   use_linear_relaxation=True, large_coef=1e5,
-                  small_coef=1e-10):
+                  small_coef=1e-10, safety_tol=1e-10):
         self.relaxation_side = relaxation_side
         self.use_linear_relaxation = use_linear_relaxation
         self._large_coef = large_coef
         self._small_coef = small_coef
+        self.safety_tol = safety_tol
         self._needs_rebuilt = True
 
         self.clear_oa_points()
@@ -382,6 +401,17 @@ class BaseRelaxationData(_BlockData):
         del self._oa_param_indices[oa_cut.offset]
         del self._cuts[oa_cut]
 
+    def _log_bad_cut(self, fail_var, fail_coef, err_msg):
+        if fail_var is None and fail_coef is None:
+            logger.debug(f'Encountered exception when adding OA cut '
+                         f'for "{self._get_pprint_string()}"; Error message: {err_msg}')
+        elif fail_var is None:
+            logger.debug(f'Skipped OA cut for "{self._get_pprint_string()}" due to a '
+                         f'large constant value: {fail_coef}')
+        else:
+            logger.debug(f'Skipped OA cut for "{self._get_pprint_string()}" due to a '
+                         f'small or large coefficient for {str(fail_var)}: {fail_coef}')
+
     def _add_oa_cut(self, pt_tuple: Tuple[float, ...], oa_cut: _OACut) -> Optional[_GeneralConstraintData]:
         if self.is_rhs_convex():
             rel_side = RelaxationSide.UNDER
@@ -389,18 +419,11 @@ class BaseRelaxationData(_BlockData):
             assert self.is_rhs_concave()
             rel_side = RelaxationSide.OVER
         cut_info = oa_cut.update(var_vals=pt_tuple, relaxation_side=rel_side,
-                                 too_small=self.small_coef, too_large=self.large_coef)
+                                 too_small=self.small_coef, too_large=self.large_coef,
+                                 safety_tol=self.safety_tol)
         success, fail_var, fail_coef, err_msg = cut_info
         if not success:
-            if fail_var is None and fail_coef is None:
-                logger.debug(f'Encountered exception when adding OA cut '
-                             f'for "{self._get_pprint_string()}"; Error message: {err_msg}')
-            elif fail_var is None:
-                logger.debug(f'Skipped OA cut for "{self._get_pprint_string()}" due to a '
-                             f'large constant value: {fail_coef}')
-            else:
-                logger.debug(f'Skipped OA cut for "{self._get_pprint_string()}" due to a '
-                             f'small or large coefficient for {str(fail_var)}: {fail_coef}')
+            self._log_bad_cut(fail_var, fail_coef, err_msg)
             if oa_cut in self._cuts:
                 del self._cuts[oa_cut]
         else:
@@ -423,7 +446,8 @@ class BaseRelaxationData(_BlockData):
                 self._remove_oa_cut(oa_cut)
 
     def _add_oa_point(self, pt_tuple: Tuple[float, ...]):
-        self._oa_points[pt_tuple] = self._get_oa_cut()
+        if pt_tuple not in self._oa_points:
+            self._oa_points[pt_tuple] = self._get_oa_cut()
 
     def add_oa_point(self, var_values: Optional[Union[Tuple[float, ...], Mapping[_GeneralVarData, float]]] = None):
         """
@@ -476,7 +500,7 @@ class BaseRelaxationData(_BlockData):
         for pt_tuple in list_of_points:
             self._add_oa_point(pt_tuple)
 
-    def add_cut(self, keep_cut=True, check_violation=False, feasibility_tol=1e-8) -> Optional[_GeneralConstraintData]:
+    def add_cut(self, keep_cut=True, check_violation=True, feasibility_tol=1e-8) -> Optional[_GeneralConstraintData]:
         """
         This function will add a linear cut to the relaxation. Cuts are only generated for the convex side of the
         constraint (if the constraint has a convex side). For example, if the relaxation is a PWXSquaredRelaxationData
