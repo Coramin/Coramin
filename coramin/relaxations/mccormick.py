@@ -194,7 +194,7 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         super(PWMcCormickRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
                                                        ensure_oa_at_vertices=ensure_oa_at_vertices)
         if not build_nonlinear_constraint:
-            if self._check_valid_domain_for_relaxation()
+            if self._check_valid_domain_for_relaxation():
                 if len(self._partitions[self._x1]) == 2:
                     if self._mccormicks is None:
                         self._remove_relaxation()
