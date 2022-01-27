@@ -163,11 +163,6 @@ class BaseRelaxationData(_BlockData):
         self._saved_oa_points = list()
         self._oa_stack_map = dict()
 
-        del self._original_constraint
-        self._original_constraint = None
-        del self._nonlinear
-        self._nonlinear = None
-
     def get_aux_var(self) -> _GeneralVarData:
         """
         All Coramin relaxations are relaxations of constraints of the form w <=/=/>= f(x). This method returns w
@@ -184,6 +179,9 @@ class BaseRelaxationData(_BlockData):
 
     def get_rhs_expr(self) -> ExpressionBase:
         raise NotImplementedError('This method should be implemented by subclasses')
+
+    def _get_expr_for_oa(self):
+        return self.get_rhs_expr()
 
     @property
     def small_coef(self):
@@ -236,6 +234,13 @@ class BaseRelaxationData(_BlockData):
             return True
         return False
 
+    def _check_valid_domain_for_relaxation(self) -> bool:
+        for v in self.get_rhs_vars():
+            lb, ub = _get_bnds_tuple(v)
+            if not math.isfinite(lb) or not math.isfinite(ub):
+                return False
+        return True
+
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
         # we have to ensure only one of
         #    - self._cuts
@@ -277,11 +282,12 @@ class BaseRelaxationData(_BlockData):
                     self._update_oa_cuts()
                 else:
                     if self._nonlinear is None:
+                        del self._nonlinear
                         if self.is_rhs_convex():
-                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() >= self.get_rhs_expr())
+                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() >= self._get_expr_for_oa())
                         else:
                             assert self.is_rhs_concave()
-                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() <= self.get_rhs_expr())
+                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() <= self._get_expr_for_oa())
 
     def vars_with_bounds_in_relaxation(self):
         """
@@ -390,7 +396,7 @@ class BaseRelaxationData(_BlockData):
         offset_param = self._oa_params[self._current_param_index]
         self._oa_param_indices[offset_param] = self._current_param_index
         self._current_param_index += 1
-        oa_cut = _OACut(self.get_rhs_expr(), rhs_vars, coef_params, offset_param)
+        oa_cut = _OACut(self._get_expr_for_oa(), rhs_vars, coef_params, offset_param)
         return oa_cut
 
     def _remove_oa_cut(self, oa_cut: _OACut):
@@ -529,7 +535,7 @@ class BaseRelaxationData(_BlockData):
             if check_violation:
                 needs_cut = False
                 try:
-                    rhs_val = pe.value(self.get_rhs_expr())
+                    rhs_val = pe.value(self._get_expr_for_oa())
                 except (OverflowError, ZeroDivisionError, ValueError):
                     rhs_val = None
                 if rhs_val is not None:
@@ -560,7 +566,7 @@ class BaseRelaxationData(_BlockData):
         for v in rhs_vars:
             bnds_list.append(_get_bnds_tuple(v))
 
-        for pt_tuple, oa_cut in self._oa_points.items():
+        for pt_tuple, oa_cut in list(self._oa_points.items()):
             new_pt_list = list()
             for (v_lb, v_ub), pt in zip(bnds_list, pt_tuple):
                 if pt < v_lb:

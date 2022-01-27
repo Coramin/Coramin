@@ -159,7 +159,6 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         self._aux_var_ref.set_component(aux_var)
         self._partitions[self._x1] = _get_bnds_list(self._x1)
         self._f_x_expr = x1 * x2
-        self._remove_relaxation()
 
     def build(self, x1, x2, aux_var, relaxation_side=RelaxationSide.BOTH, large_coef=1e5, small_coef=1e-10,
               safety_tol=1e-10):
@@ -182,13 +181,6 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
     def remove_relaxation(self):
         super(PWMcCormickRelaxationData, self).remove_relaxation()
         self._remove_relaxation()
-
-    def _check_valid_domain_for_relaxation(self) -> bool:
-        lb1, ub1 = _get_bnds_tuple(self._x1)
-        lb2, ub2 = _get_bnds_tuple(self._x2)
-        if lb1 > -math.inf and ub1 < math.inf and lb2 > -math.inf and ub2 < math.inf:
-            return True
-        return False
 
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
         super(PWMcCormickRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,

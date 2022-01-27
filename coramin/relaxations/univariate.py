@@ -502,7 +502,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
     """
 
     def __init__(self, component):
-        BasePWRelaxationData.__init__(self, component)
+        super().__init__(component)
         self._xref = ComponentWeakRef(None)
         self._aux_var_ref = ComponentWeakRef(None)
         self._pw_repn = 'INC'
@@ -559,10 +559,10 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(PWUnivariateRelaxationData, self).set_input(relaxation_side=relaxation_side,
-                                                          use_linear_relaxation=use_linear_relaxation,
-                                                          large_coef=large_coef, small_coef=small_coef,
-                                                          safety_tol=safety_tol)
+        super().set_input(relaxation_side=relaxation_side,
+                          use_linear_relaxation=use_linear_relaxation,
+                          large_coef=large_coef, small_coef=small_coef,
+                          safety_tol=safety_tol)
         self._pw_repn = pw_repn
         self._function_shape = shape
         self._f_x_expr = f_x_expr
@@ -571,8 +571,6 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         self._aux_var_ref.set_component(aux_var)
         bnds_list = _get_bnds_list(self._x)
         self._partitions[self._x] = bnds_list
-
-        self._remove_relaxation()
 
     def build(self, x, aux_var, shape, f_x_expr, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
               use_linear_relaxation=True, large_coef=1e5, small_coef=1e-10, safety_tol=1e-10):
@@ -609,7 +607,7 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         self._pw_secant = None
 
     def remove_relaxation(self):
-        super(PWUnivariateRelaxationData, self).remove_relaxation()
+        super().remove_relaxation()
         self._remove_relaxation()
 
     def _needs_secant(self):
@@ -622,15 +620,9 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         else:
             return False
 
-    def _check_valid_domain_for_relaxation(self) -> bool:
-        lb, ub = _get_bnds_tuple(self._x)
-        if lb > -math.inf and ub < math.inf:
-            return True
-        return False
-
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
-        super(PWUnivariateRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
-                                                        ensure_oa_at_vertices=ensure_oa_at_vertices)
+        super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
+                        ensure_oa_at_vertices=ensure_oa_at_vertices)
         if not build_nonlinear_constraint:
             if self._check_valid_domain_for_relaxation():
                 if self._needs_secant():
@@ -780,12 +772,12 @@ class CustomUnivariateBaseRelaxationData(PWUnivariateRelaxationData):
         use_linear_relaxation: bool
             Specifies whether a linear or nonlinear relaxation should be used
         """
-        super(CustomUnivariateBaseRelaxationData, self).set_input(x=x, aux_var=aux_var, shape=FunctionShape.UNKNOWN,
-                                                                  f_x_expr=self._rhs_func(x), pw_repn=pw_repn,
-                                                                  relaxation_side=relaxation_side,
-                                                                  use_linear_relaxation=use_linear_relaxation,
-                                                                  large_coef=large_coef, small_coef=small_coef,
-                                                                  safety_tol=safety_tol)
+        super().set_input(x=x, aux_var=aux_var, shape=FunctionShape.UNKNOWN,
+                          f_x_expr=self._rhs_func(x), pw_repn=pw_repn,
+                          relaxation_side=relaxation_side,
+                          use_linear_relaxation=use_linear_relaxation,
+                          large_coef=large_coef, small_coef=small_coef,
+                          safety_tol=safety_tol)
 
     def build(self, x, aux_var, pw_repn='INC', relaxation_side=RelaxationSide.BOTH,
               use_linear_relaxation=True, large_coef=1e5, small_coef=1e-10, safety_tol=1e-10):
@@ -849,12 +841,12 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         raise NotImplementedError('This should be implemented by a derived class')
 
     def __init__(self, component):
-        super(SinArctanBaseRelaxationData, self).__init__(component)
+        super().__init__(component)
         self._secant_index = None
         self._secant_exprs = None
 
     def _remove_relaxation(self):
-        super(SinArctanBaseRelaxationData, self)._remove_relaxation()
+        super()._remove_relaxation()
         del self._secant_index
         del self._secant_exprs
         self._secant_index = None
@@ -870,8 +862,8 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         raise NotImplementedError('This should be implemented by a derived class')
 
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
-        super(SinArctanBaseRelaxationData, self).rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
-                                                         ensure_oa_at_vertices=ensure_oa_at_vertices)
+        super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
+                        ensure_oa_at_vertices=ensure_oa_at_vertices)
         if not build_nonlinear_constraint:
             if self._check_valid_domain_for_relaxation():
                 if (not self.is_rhs_convex()) and (not self.is_rhs_concave()):

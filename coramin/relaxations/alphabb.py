@@ -60,28 +60,37 @@ class AlphaBBRelaxationData(MultivariateRelaxationData):
         self._compute_alpha = None
         self._alphabb_rhs = None
 
-    def get_rhs_expr(self):
+    def _get_expr_for_oa(self):
         return self._alphabb_rhs
 
-    def set_input(self, aux_var, f_x_expr, compute_alpha=_compute_alpha, persistent_solvers=None,
-                  large_eval_tol=math.inf, use_linear_relaxation=True):
+    def set_input(self, aux_var, f_x_expr, compute_alpha=_compute_alpha, use_linear_relaxation=True,
+                  large_coef=1e5, small_coef=1e-10, safety_tol=1e-10):
         super().set_input(aux_var=aux_var, shape=FunctionShape.CONVEX, f_x_expr=f_x_expr,
-                          persistent_solvers=persistent_solvers, large_eval_tol=large_eval_tol,
-                          use_linear_relaxation=use_linear_relaxation)
+                          use_linear_relaxation=use_linear_relaxation, large_coef=large_coef,
+                          small_coef=small_coef, safety_tol=safety_tol)
         self._compute_alpha = compute_alpha
 
-    def build(self, aux_var, f_x_expr, compute_alpha=_compute_alpha, persistent_solvers=None,
-              large_eval_tol=math.inf, use_linear_relaxation=True):
+    def build(self, aux_var, f_x_expr, compute_alpha=_compute_alpha, use_linear_relaxation=True,
+              large_coef=1e5, small_coef=1e-10, safety_tol=1e-10):
         self.set_input(aux_var=aux_var, f_x_expr=f_x_expr, compute_alpha=compute_alpha,
-                       persistent_solvers=persistent_solvers, large_eval_tol=large_eval_tol,
-                       use_linear_relaxation=use_linear_relaxation)
+                       use_linear_relaxation=use_linear_relaxation, large_coef=large_coef,
+                       small_coef=small_coef, safety_tol=safety_tol)
         self.rebuild()
 
-    def _build_relaxation(self):
-        alpha = self._compute_alpha(self.get_rhs_vars(), self._f_x_expr)
+    def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
+        alpha = self._compute_alpha(self.get_rhs_vars(), self.get_rhs_expr())
         self._alphabb_rhs = _build_alphabb_relaxation(xs=self.get_rhs_vars(),
-                                                      f_x_expr=self._f_x_expr,
+                                                      f_x_expr=self.get_rhs_expr(),
                                                       alpha=alpha)
+        for oa_cut in self._oa_points.values():
+            oa_cut.nonlin_expr = self._get_expr_for_oa()
+            derivs = reverse_sd(oa_cut.nonlin_expr)
+            oa_cut.derivs = [derivs[i] for i in oa_cut.expr_vars]
+
+        if self._nonlinear is not None:  # because the _alphabb_rhs changed
+            self._needs_rebuilt = True
+
+        super().rebuild()
 
     def vars_with_bounds_in_relaxation(self):
-        return self.get_rhs_vars()
+        return list(self.get_rhs_vars())
