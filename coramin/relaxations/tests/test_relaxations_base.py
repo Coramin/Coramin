@@ -5,6 +5,28 @@ import coramin
 from pyomo.core.base.var import SimpleVar
 
 
+"""
+Things to test
+- relaxations are valid under all possible conditions
+  - continuous relaxations
+  - nonlinear relaxations
+  - pw relaxations
+- infinite variable bounds
+- tightness of relaxations
+  - as variable bounds improve, the relaxations should get tighter
+  - at variable bounds, relaxations should be exact
+  - cuts improve relaxation
+- large coef
+- small coef
+- safety tol
+- relaxation side
+- modifications to relaxations
+- rebuild
+  - if things don't need removed, don't remove them
+  - rebuild with original constraint
+"""
+
+
 class TestBaseRelaxation(unittest.TestCase):
     def test_push_and_pop_oa_points(self):
         m = pe.ConcreteModel()
