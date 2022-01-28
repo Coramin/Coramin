@@ -79,8 +79,8 @@ class _OACut(object):
             for ndx, v in enumerate(self.expr_vars):
                 der = pe.value(self.derivs[ndx])
                 offset_val -= der * v.value
-                self.coefficients[ndx].value = der
-            self.offset.value = offset_val
+                self.coefficients[ndx]._value = der
+            self.offset._value = offset_val
         except (OverflowError, ValueError, ZeroDivisionError) as e:
             res = (False, None, None, str(e))
         finally:
@@ -105,23 +105,23 @@ def _check_cut(cut: LinearExpression, too_small, too_large, relaxation_side, saf
     res = (True, None, None, None)
     for coef_p, v in zip(cut.linear_coefs, cut.linear_vars):
         coef = coef_p.value
-        if abs(coef) >= too_large:
+        if not math.isfinite(coef) or abs(coef) >= too_large:
             res = (False, v, coef, None)
         elif 0 < abs(coef) <= too_small:
-            coef_p.value = 0
+            coef_p._value = 0
             if relaxation_side == RelaxationSide.UNDER:
-                cut.constant.value = interval.add(cut.constant.value, cut.constant.value,
-                                                  *interval.mul(v.lb, v.ub, coef, coef))[0]
+                cut.constant._value = interval.add(cut.constant.value, cut.constant.value,
+                                                   *interval.mul(v.lb, v.ub, coef, coef))[0]
             elif relaxation_side == RelaxationSide.OVER:
-                cut.constant.value = interval.add(cut.constant.value, cut.constant.value,
-                                                  *interval.mul(v.lb, v.ub, coef, coef))[1]
+                cut.constant._value = interval.add(cut.constant.value, cut.constant.value,
+                                                   *interval.mul(v.lb, v.ub, coef, coef))[1]
             else:
                 raise ValueError('relaxation_side should be either UNDER or OVER')
     if relaxation_side == RelaxationSide.UNDER:
-        cut.constant.value -= safety_tol
+        cut.constant._value -= safety_tol
     else:
-        cut.constant.value += safety_tol
-    if abs(cut.constant.value) >= too_large:
+        cut.constant._value += safety_tol
+    if not math.isfinite(cut.constant.value) or abs(cut.constant.value) >= too_large:
         res = (False, None, cut.constant.value, None)
     return res
 
@@ -582,8 +582,23 @@ class BaseRelaxationData(_BlockData):
             else:
                 self._oa_points[new_pt_tuple] = oa_cut
         if ensure_oa_at_vertices:
-            lb_tuple = tuple(i[0] for i in bnds_list)
-            ub_tuple = tuple(i[1] for i in bnds_list)
+            lb_list = list()
+            ub_list = list()
+            for lb, ub in bnds_list:
+                if math.isfinite(lb) and math.isfinite(ub):
+                    lb_list.append(lb)
+                    ub_list.append(ub)
+                elif math.isfinite(lb):
+                    lb_list.append(lb)
+                    ub_list.append(max(lb + 1, 1))
+                elif math.isfinite(ub):
+                    lb_list.append(min(ub - 1, -1))
+                    ub_list.append(ub)
+                else:
+                    lb_list.append(-1)
+                    ub_list.append(1)
+            lb_tuple = tuple(lb_list)
+            ub_tuple = tuple(ub_list)
             if lb_tuple not in self._oa_points:
                 self._add_oa_point(lb_tuple)
             if ub_tuple not in self._oa_points:
