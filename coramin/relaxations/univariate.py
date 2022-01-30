@@ -662,10 +662,14 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         try:
             x1 = self._partitions[self._x][0]
             x2 = self._partitions[self._x][1]
-            y1 = _eval(x1)
-            y2 = _eval(x2)
-            slope = (y2 - y1) / (x2 - x1)
-            intercept = y2 - slope*x2
+            if x1 == x2:
+                slope = 0
+                intercept = _eval(x1)
+            else:
+                y1 = _eval(x1)
+                y2 = _eval(x2)
+                slope = (y2 - y1) / (x2 - x1)
+                intercept = y2 - slope*x2
             err_message = None
         except (ZeroDivisionError, OverflowError, ValueError) as e:
             slope = None
@@ -675,8 +679,8 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
             logger.debug(f'Encountered exception when adding secant for "{self._get_pprint_string()}"; Error message: {err_message}')
             self._remove_relaxation()
         else:
-            self._secant_slope.value = slope
-            self._secant_intercept.value = intercept
+            self._secant_slope._value = slope
+            self._secant_intercept._value = intercept
             if self.is_rhs_concave():
                 rel_side = RelaxationSide.UNDER
             else:
@@ -820,6 +824,18 @@ class PWCosRelaxationData(CustomUnivariateBaseRelaxationData):
     A helper class for building and modifying piecewise relaxations of w = cos(x) for -pi/2 <= x <= pi/2.
     """
 
+    def __init__(self, component):
+        super().__init__(component)
+        self._last_concave = None
+
+    def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
+        current_concave = self.is_rhs_concave()
+        if current_concave != self._last_concave:
+            self._needs_rebuilt = True
+        self._last_concave = current_concave
+        super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
+                        ensure_oa_at_vertices=ensure_oa_at_vertices)
+
     def _rhs_func(self, x):
         return pe.cos(x)
 
@@ -844,6 +860,8 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         super().__init__(component)
         self._secant_index = None
         self._secant_exprs = None
+        self._last_convex = None
+        self._last_concave = None
 
     def _remove_relaxation(self):
         super()._remove_relaxation()
@@ -862,6 +880,12 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         raise NotImplementedError('This should be implemented by a derived class')
 
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
+        current_convex = self.is_rhs_convex()
+        current_concave = self.is_rhs_concave()
+        if current_convex != self._last_convex or current_concave != self._last_concave:
+            self._needs_rebuilt = True
+        self._last_convex = current_convex
+        self._last_concave = current_concave
         super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
                         ensure_oa_at_vertices=ensure_oa_at_vertices)
         if not build_nonlinear_constraint:
@@ -922,10 +946,10 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
         if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}:
             tangent_x, tangent_slope, tangent_int = self._underestimator_func()(xub)
             if tangent_x >= xlb:
-                self._secant_slope[0].value = tangent_slope
-                self._secant_intercept[0].value = tangent_int
-                self._secant_slope[1].value = _eval.deriv(xlb)
-                self._secant_intercept[1].value = _eval(xlb) - xlb * _eval.deriv(xlb)
+                self._secant_slope[0]._value = tangent_slope
+                self._secant_intercept[0]._value = tangent_int
+                self._secant_slope[1]._value = _eval.deriv(xlb)
+                self._secant_intercept[1]._value = _eval(xlb) - xlb * _eval.deriv(xlb)
                 self._check_expr(0)
                 self._check_expr(1)
             else:
@@ -933,28 +957,27 @@ class SinArctanBaseRelaxationData(CustomUnivariateBaseRelaxationData):
                 y2 = _eval(xub)
                 slope = (y2 - y1) / (xub - xlb)
                 intercept = y2 - slope * xub
-                self._secant_slope[0].value = slope
-                self._secant_intercept[0].value = intercept
+                self._secant_slope[0]._value = slope
+                self._secant_intercept[0]._value = intercept
                 self._check_expr(0)
                 self._secant[1].deactivate()
 
         if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
             tangent_x, tangent_slope, tangent_int = self._overestimator_func()(xlb)
             if tangent_x <= xub:
-                self._secant_slope[2].value = tangent_slope
-                self._secant_intercept[2].value = tangent_int
-                self._secant_slope[3].value = _eval.deriv(xub)
-                self._secant_intercept[3].value = _eval(xub) - xub * _eval.deriv(xub)
+                self._secant_slope[2]._value = tangent_slope
+                self._secant_intercept[2]._value = tangent_int
+                self._secant_slope[3]._value = _eval.deriv(xub)
+                self._secant_intercept[3]._value = _eval(xub) - xub * _eval.deriv(xub)
                 self._check_expr(2)
                 self._check_expr(3)
             else:
-                _eval = _FxExpr(self._f_x_expr, self._x)
                 y1 = _eval(xlb)
                 y2 = _eval(xub)
                 slope = (y2 - y1) / (xub - xlb)
                 intercept = y2 - slope * xub
-                self._secant_slope[2].value = slope
-                self._secant_intercept[2].value = intercept
+                self._secant_slope[2]._value = slope
+                self._secant_intercept[2]._value = intercept
                 self._check_expr(2)
                 self._secant[3].deactivate()
 

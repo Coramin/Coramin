@@ -24,6 +24,7 @@ Things to test
 - rebuild
   - if things don't need removed, don't remove them
   - rebuild with original constraint
+- cloning
 """
 
 

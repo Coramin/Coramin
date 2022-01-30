@@ -7,3 +7,4 @@ from coramin import domain_reduction
 from coramin import relaxations
 from coramin import algorithms
 from coramin import third_party
+from .utils import RelaxationSide, FunctionShape

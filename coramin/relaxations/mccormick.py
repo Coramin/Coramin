@@ -14,7 +14,7 @@ pe = pyo
 logger = logging.getLogger(__name__)
 
 
-def _build_pw_mccormick_relaxation(b, x1, x2, aux_var, x1_pts, relaxation_side=RelaxationSide.BOTH):
+def _build_pw_mccormick_relaxation(b, x1, x2, aux_var, x1_pts, relaxation_side=RelaxationSide.BOTH, safety_tol=1e-10):
     """
     This function creates piecewise envelopes to relax "aux_var = x1*x2". Note that the partitioning is done on "x1" only.
     This is the "nf4r" from Gounaris, Misener, and Floudas (2009).
@@ -76,13 +76,13 @@ def _build_pw_mccormick_relaxation(b, x1, x2, aux_var, x1_pts, relaxation_side=R
         # create the relaxation constraints
         if relaxation_side == RelaxationSide.UNDER or relaxation_side == RelaxationSide.BOTH:
             b.aux_var_lb1 = pyo.Constraint(expr=(aux_var >= x2_ub * x1 + sum(x1_pts[n] * b.delta_x2[n] for n in b.interval_set) -
-                                                 (x2_ub - x2_lb) * sum(x1_pts[n] * b.lambda_[n] for n in b.interval_set)))
-            b.aux_var_lb2 = pyo.Constraint(expr=aux_var >= x2_lb * x1 + sum(x1_pts[n - 1] * b.delta_x2[n] for n in b.interval_set))
+                                                 (x2_ub - x2_lb) * sum(x1_pts[n] * b.lambda_[n] for n in b.interval_set) - safety_tol))
+            b.aux_var_lb2 = pyo.Constraint(expr=aux_var >= x2_lb * x1 + sum(x1_pts[n - 1] * b.delta_x2[n] for n in b.interval_set) - safety_tol)
 
         if relaxation_side == RelaxationSide.OVER or relaxation_side == RelaxationSide.BOTH:
             b.aux_var_ub1 = pyo.Constraint(expr=(aux_var <= x2_ub * x1 + sum(x1_pts[n - 1] * b.delta_x2[n] for n in b.interval_set) -
-                                                 (x2_ub - x2_lb) * sum(x1_pts[n - 1] * b.lambda_[n] for n in b.interval_set)))
-            b.aux_var_ub2 = pyo.Constraint(expr=aux_var <= x2_lb * x1 + sum(x1_pts[n] * b.delta_x2[n] for n in b.interval_set))
+                                                 (x2_ub - x2_lb) * sum(x1_pts[n - 1] * b.lambda_[n] for n in b.interval_set) + safety_tol))
+            b.aux_var_ub2 = pyo.Constraint(expr=aux_var <= x2_lb * x1 + sum(x1_pts[n] * b.delta_x2[n] for n in b.interval_set) + safety_tol)
 
 
 @declare_custom_block(name='PWMcCormickRelaxation')
@@ -98,6 +98,7 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         self._aux_var_ref = ComponentWeakRef(None)
         self._f_x_expr = None
         self._mc_index = None
+        self._slopes_index = None
         self._v_index = None
         self._slopes: Optional[IndexedParam] = None
         self._intercepts: Optional[IndexedParam] = None
@@ -118,7 +119,7 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         return self._aux_var_ref.get_component()
 
     def get_rhs_vars(self):
-        return [self._x1, self._x2]
+        return self._x1, self._x2
 
     def get_rhs_expr(self):
         return self._f_x_expr
@@ -127,9 +128,11 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         return [self._x1, self._x2]
 
     def _remove_relaxation(self):
-        del self._slopes, self._intercepts, self._mccormicks, self._pw, self._mc_index, self._v_index
+        del self._slopes, self._intercepts, self._mccormicks, self._pw, \
+            self._mc_index, self._v_index, self._slopes_index
         self._mc_index = None
         self._v_index = None
+        self._slopes_index = None
         self._slopes = None
         self._intercepts = None
         self._mccormicks = None
@@ -198,16 +201,17 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
                     self._pw = pe.Block(concrete=True)
                     _build_pw_mccormick_relaxation(b=self._pw, x1=self._x1, x2=self._x2, aux_var=self._aux_var,
                                                    x1_pts=self._partitions[self._x1],
-                                                   relaxation_side=self.relaxation_side)
+                                                   relaxation_side=self.relaxation_side, safety_tol=self.safety_tol)
             else:
                 self._remove_relaxation()
 
     def _build_mccormicks(self):
-        del self._mc_index, self._v_index, self._slopes, self._intercepts, self._mccormicks
+        del self._mc_index, self._v_index, self._slopes_index, self._slopes, self._intercepts, self._mccormicks
         self._mc_exprs = dict()
         self._mc_index = pe.Set(initialize=[0, 1, 2, 3])
         self._v_index = pe.Set(initialize=[1, 2])
-        self._slopes = IndexedParam(self._mc_index, self._v_index, mutable=True)
+        self._slopes_index = pe.Set(initialize=self._mc_index * self._v_index)
+        self._slopes = IndexedParam(self._slopes_index, mutable=True)
         self._intercepts = IndexedParam(self._mc_index, mutable=True)
         self._mccormicks = IndexedConstraint(self._mc_index)
 

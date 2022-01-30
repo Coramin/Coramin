@@ -7,13 +7,6 @@ logger = logging.getLogger(__name__)
 pyo = pe
 
 
-def _copy_v_pts_without_inf(v_pts):
-    new_pts = list()
-    for pt in v_pts:
-        if pt > -math.inf and pt < math.inf:
-            new_pts.append(pt)
-    return new_pts
-
 def _get_bnds_tuple(v):
     lb = pe.value(v.lb)
     ub = pe.value(v.ub)

@@ -27,25 +27,6 @@ Base classes for relaxations
 """
 
 
-class _ValueManager(object):
-    def __init__(self):
-        self.orig_values = pe.ComponentMap()
-
-    def save_values(self, variables):
-        self.orig_values = pe.ComponentMap()
-        for v in variables:
-            self.orig_values[v] = v.value
-
-    def pop_values(self):
-        for v, val in self.orig_values.items():
-            v.set_value(val, skip_validation=True)
-
-
-def _load_var_values(var_value_map):
-    for v, val in var_value_map.items():
-        v.value = val
-
-
 class _OACut(object):
     def __init__(self,
                  nonlin_expr,
@@ -262,6 +243,8 @@ class BaseRelaxationData(_BlockData):
         if needs_rebuilt:
             self.remove_relaxation()
 
+        self._needs_rebuilt = False
+
         if build_nonlinear_constraint and self._original_constraint is None:
             if self.relaxation_side == RelaxationSide.BOTH:
                 self._original_constraint = pe.Constraint(expr=self.get_aux_var() == self.get_rhs_expr())
@@ -405,7 +388,8 @@ class BaseRelaxationData(_BlockData):
             del self._oa_param_indices[p]
         del self._oa_params[self._oa_param_indices[oa_cut.offset]]
         del self._oa_param_indices[oa_cut.offset]
-        del self._cuts[oa_cut]
+        if oa_cut in self._cuts:  # if the cut did not pass _check_cut, it won't be in self._cuts
+            del self._cuts[oa_cut]
 
     def _log_bad_cut(self, fail_var, fail_coef, err_msg):
         if fail_var is None and fail_coef is None:
@@ -464,13 +448,14 @@ class BaseRelaxationData(_BlockData):
         ----------
         var_values: Optional[Union[Tuple[float, ...], Mapping[_GeneralVarData, float]]]
         """
-        if var_values is None:
-            var_values = tuple(v.value for v in self.get_rhs_vars())
-        elif type(var_values) is tuple:
-            pass
-        else:
-            var_values = tuple(var_values[v] for v in self.get_rhs_vars())
-        self._add_oa_point(var_values)
+        if self._has_a_convex_side():
+            if var_values is None:
+                var_values = tuple(v.value for v in self.get_rhs_vars())
+            elif type(var_values) is tuple:
+                pass
+            else:
+                var_values = tuple(var_values[v] for v in self.get_rhs_vars())
+            self._add_oa_point(var_values)
 
     def push_oa_points(self, key=None):
         """
@@ -600,9 +585,21 @@ class BaseRelaxationData(_BlockData):
             lb_tuple = tuple(lb_list)
             ub_tuple = tuple(ub_list)
             if lb_tuple not in self._oa_points:
-                self._add_oa_point(lb_tuple)
+                if len(self._oa_points) <= 1:
+                    self._add_oa_point(lb_tuple)
+                else:  # move the smallest point to lb_tuple
+                    min_pt = min(self._oa_points.keys())
+                    min_oa_cut = self._oa_points[min_pt]
+                    del self._oa_points[min_pt]
+                    self._oa_points[lb_tuple] = min_oa_cut
             if ub_tuple not in self._oa_points:
-                self._add_oa_point(ub_tuple)
+                if len(self._oa_points) <= 1:
+                    self._add_oa_point(ub_tuple)
+                else: # move the largest point to ub_tuple
+                    max_pt = max(self._oa_points.keys())
+                    max_oa_cut = self._oa_points[max_pt]
+                    del self._oa_points[max_pt]
+                    self._oa_points[ub_tuple] = max_oa_cut
 
 
 @declare_custom_block(name='BasePWRelaxation')
@@ -665,8 +662,10 @@ class BasePWRelaxationData(BaseRelaxationData):
 
     def clean_partitions(self):
         # discard any points in the partitioning that are not within the variable bounds
-        for var, pts in self._partitions.items():
+        for var, pts in list(self._partitions.items()):
+            pts = list(set(pts))
             pts.sort()
+            self._partitions[var] = pts
 
         for var, pts in self._partitions.items():
             lb, ub = tuple(_get_bnds_list(var))
