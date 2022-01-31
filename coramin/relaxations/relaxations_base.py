@@ -246,6 +246,7 @@ class BaseRelaxationData(_BlockData):
         self._needs_rebuilt = False
 
         if build_nonlinear_constraint and self._original_constraint is None:
+            del self._original_constraint
             if self.relaxation_side == RelaxationSide.BOTH:
                 self._original_constraint = pe.Constraint(expr=self.get_aux_var() == self.get_rhs_expr())
             elif self.relaxation_side == RelaxationSide.UNDER:
