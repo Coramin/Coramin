@@ -3,7 +3,6 @@ import itertools
 import math
 import pyomo.environ as pe
 import coramin
-import numpy as np
 from coramin.relaxations.alphabb import AlphaBBRelaxation
 
 
@@ -34,7 +33,7 @@ class TestAlphaBBRelaxation(unittest.TestCase):
                 model.x.value = x_v
                 model.y.value = y_v
                 f_x_v = pe.value(model.f_x)
-                abb_v = pe.value(model.abb.nonlinear_underestimator.body)
+                abb_v = pe.value(model.abb._nonlinear.body)
                 self.assertAlmostEqual(f_x_v, abb_v)
 
         solver = pe.SolverFactory('ipopt')
@@ -51,6 +50,6 @@ class TestAlphaBBRelaxation(unittest.TestCase):
         for _ in range(5):
             model.abb.add_oa_point()
             model.abb.rebuild()
-            solver = pe.SolverFactory('gurobi_direct')
+            solver = pe.SolverFactory('appsi_gurobi')
             solver.solve(model)
             self.assertLessEqual(model.w.value, pe.value(model.f_x))

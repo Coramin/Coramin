@@ -21,13 +21,19 @@ def _compute_alpha(xs, f_x_expr):
     hess = _hessian(xs, f_x_expr)
     alpha = 0.0
     for i, x in enumerate(xs):
-        a_ii_expr = hess[x][x]
+        if x in hess[x]:
+            a_ii_expr = hess[x][x]
+        else:
+            a_ii_expr = 0
         a_ii = compute_bounds_on_expr(a_ii_expr)
         tot = a_ii[0]
         for j, y in enumerate(xs):
             if i == j:
                 continue
-            a_ij_expr = hess[x][y]
+            if y in hess[x]:
+                a_ij_expr = hess[x][y]
+            else:
+                a_ij_expr = 0
             a_ij = compute_bounds_on_expr(a_ij_expr)
             tot -= max(abs(a_ij[0]), abs(a_ij[1]))
         tot = - 0.5 * tot
@@ -90,7 +96,8 @@ class AlphaBBRelaxationData(MultivariateRelaxationData):
         if self._nonlinear is not None:  # because the _alphabb_rhs changed
             self._needs_rebuilt = True
 
-        super().rebuild()
+        super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
+                        ensure_oa_at_vertices=ensure_oa_at_vertices)
 
     def vars_with_bounds_in_relaxation(self):
         return list(self.get_rhs_vars())

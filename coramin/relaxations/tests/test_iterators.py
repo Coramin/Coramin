@@ -77,7 +77,7 @@ class TestIterators(unittest.TestCase):
                                                                                               ctype=pe.Block,
                                                                                               descend_into=True))
         self.assertEqual(len(non_relaxation_blocks), 2)
-        self.assertEqual(len(all_blocks), 6)
+        self.assertEqual(len(all_blocks), 8)
 
         all_blocks = list(m.component_data_objects(pe.Block, descend_into=False))
         non_relaxation_blocks = list(coramin.relaxations.nonrelaxation_component_data_objects(m,

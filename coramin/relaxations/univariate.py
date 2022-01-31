@@ -34,9 +34,7 @@ def _compute_sine_overestimator_tangent_point(vlb):
         intercept = float(np.sin(vlb) - slope * vlb)
         return tangent_point, slope, intercept
     else:
-        e = 'Unable to build relaxation for sin(x)\nBisect info: ' + str(res)
-        logger.error(e)
-        raise RuntimeError(e)
+        raise RuntimeError('Unable to build relaxation for sin(x)\nBisect info: ' + str(res))
 
 
 def _compute_sine_underestimator_tangent_point(vub):
@@ -49,9 +47,7 @@ def _compute_sine_underestimator_tangent_point(vub):
         intercept = float(np.sin(vub) - slope * vub)
         return tangent_point, slope, intercept
     else:
-        e = ('Unable to build relaxation for sin(x)\nBisect info: ' + str(res))
-        logger.error(e)
-        raise RuntimeError(e)
+        raise RuntimeError('Unable to build relaxation for sin(x)\nBisect info: ' + str(res))
 
 
 def _atan_overestimator_fn(x, LB):
@@ -72,9 +68,7 @@ def _compute_arctan_overestimator_tangent_point(vlb):
         intercept = float(np.arctan(vlb) - slope * vlb)
         return tangent_point, slope, intercept
     else:
-        e = 'Unable to build relaxation for arctan(x)\nBisect info: ' + str(res)
-        logger.error(e)
-        raise RuntimeError(e)
+        raise RuntimeError('Unable to build relaxation for arctan(x)\nBisect info: ' + str(res))
 
 
 def _compute_arctan_underestimator_tangent_point(vub):
@@ -87,9 +81,7 @@ def _compute_arctan_underestimator_tangent_point(vub):
         intercept = float(np.arctan(vub) - slope * vub)
         return tangent_point, slope, intercept
     else:
-        e = 'Unable to build relaxation for arctan(x)\nBisect info: ' + str(res)
-        logger.error(e)
-        raise RuntimeError(e)
+        raise RuntimeError('Unable to build relaxation for arctan(x)\nBisect info: ' + str(res))
 
 
 class _FxExpr(object):
@@ -124,9 +116,9 @@ def _func_wrapper(obj):
     return _func
 
 
-def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=FunctionShape.UNKNOWN,
-                             relaxation_side=RelaxationSide.BOTH, large_eval_tol=math.inf,
-                             safety_tol=0):
+def _pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=FunctionShape.UNKNOWN,
+                              relaxation_side=RelaxationSide.BOTH, large_eval_tol=math.inf,
+                              safety_tol=0):
     """
     This function creates piecewise envelopes to relax "w=f(x)" where f(x) is univariate and either convex over the
     entire domain of x or concave over the entire domain of x.
@@ -155,22 +147,12 @@ def pw_univariate_relaxation(b, x, w, x_pts, f_x_expr, pw_repn='INC', shape=Func
         To avoid numerical problems, if f_x_expr or its derivative evaluates to a value larger than large_eval_tol, 
         at a point in x_pts, then that point is skipped.
     """
-    if shape not in {FunctionShape.CONCAVE, FunctionShape.CONVEX}:
-        e = 'pw_univariate_relaxation: shape must be either FunctionShape.CONCAVE or FunctionShape.CONVEX'
-        logger.error(e)
-        raise ValueError(e)
-
-    if relaxation_side is RelaxationSide.BOTH:
-        if shape is FunctionShape.CONVEX:
-            logger.warning('pw_univariate_relaxation does not handle the underestimators for convex functions')
-        elif shape is FunctionShape.CONCAVE:
-            logger.warning('pw_univariate_relaxation does not handle the overestimators for concave functions')
-    elif relaxation_side is RelaxationSide.UNDER:
-        if shape is FunctionShape.CONVEX:
-            logger.warning('pw_univariate_relaxation does not handle the underestimators for convex functions')
+    assert shape in {FunctionShape.CONCAVE, FunctionShape.CONVEX}
+    assert relaxation_side in {RelaxationSide.UNDER, RelaxationSide.OVER}
+    if relaxation_side == RelaxationSide.UNDER:
+        assert shape == FunctionShape.CONCAVE
     else:
-        if shape is FunctionShape.CONCAVE:
-            logger.warning('pw_univariate_relaxation does not handle the overestimators for concave functions')
+        assert shape == FunctionShape.CONVEX
 
     _eval = _FxExpr(expr=f_x_expr, x=x)
     xlb = x_pts[0]
@@ -698,15 +680,15 @@ class PWUnivariateRelaxationData(BasePWRelaxationData):
         del self._pw_secant
         self._pw_secant = pe.Block(concrete=True)
         if self.is_rhs_convex():
-            pw_univariate_relaxation(b=self._pw_secant, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
-                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONVEX,
-                                     relaxation_side=RelaxationSide.OVER, large_eval_tol=self.large_coef,
-                                     safety_tol=self.safety_tol)
+            _pw_univariate_relaxation(b=self._pw_secant, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                      f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONVEX,
+                                      relaxation_side=RelaxationSide.OVER, large_eval_tol=self.large_coef,
+                                      safety_tol=self.safety_tol)
         else:
-            pw_univariate_relaxation(b=self._pw_secant, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
-                                     f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
-                                     relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_coef,
-                                     safety_tol=self.safety_tol)
+            _pw_univariate_relaxation(b=self._pw_secant, x=self._x, w=self._aux_var, x_pts=self._partitions[self._x],
+                                      f_x_expr=self._f_x_expr, pw_repn=self._pw_repn, shape=FunctionShape.CONCAVE,
+                                      relaxation_side=RelaxationSide.UNDER, large_eval_tol=self.large_coef,
+                                      safety_tol=self.safety_tol)
 
     def add_partition_point(self, value=None):
         """

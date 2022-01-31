@@ -237,7 +237,7 @@ class BaseRelaxationData(_BlockData):
                 if self._nonlinear is not None or self._original_constraint is not None:
                     needs_rebuilt = True
             else:
-                if self._nonlinear is None:
+                if self._cuts is not None or self._original_constraint is not None:
                     needs_rebuilt = True
 
         if needs_rebuilt:
@@ -431,7 +431,7 @@ class BaseRelaxationData(_BlockData):
 
         # remove any cuts that may have been added with add_cut(keep_cut=False)
         all_oa_cuts = set(self._oa_points.values())
-        for oa_cut in self._cuts:
+        for oa_cut in list(self._cuts):
             if oa_cut not in all_oa_cuts:
                 self._remove_oa_cut(oa_cut)
 
@@ -484,6 +484,9 @@ class BaseRelaxationData(_BlockData):
         Use the most recently saved list of OA points
         """
         self.clear_oa_points()
+        del self._oa_params, self._cuts
+        self._oa_params = IndexedParam(pe.Any, mutable=True)
+        self._cuts = IndexedConstraint(pe.Any)
         if key is None:
             list_of_points = self._saved_oa_points.pop(-1)
         else:
@@ -515,6 +518,12 @@ class BaseRelaxationData(_BlockData):
         -------
         new_con: pyomo.core.base.constraint.Constraint
         """
+        rhs_vars = self.get_rhs_vars()
+        var_vals = tuple(v.value for v in rhs_vars)
+
+        if var_vals in self._oa_points:
+            return None
+
         new_con = None
         if self._has_a_convex_side():
             if check_violation:
@@ -534,8 +543,6 @@ class BaseRelaxationData(_BlockData):
                 needs_cut = True
             if needs_cut:
                 oa_cut = self._get_oa_cut()
-                rhs_vars = self.get_rhs_vars()
-                var_vals = tuple(v.value for v in rhs_vars)
                 new_con = self._add_oa_cut(pt_tuple=var_vals, oa_cut=oa_cut)
                 if keep_cut:
                     self._oa_points[var_vals] = oa_cut
@@ -618,12 +625,13 @@ class BasePWRelaxationData(BaseRelaxationData):
                                                   ensure_oa_at_vertices=ensure_oa_at_vertices)
         self.clean_partitions()
 
-    def _set_input(self, relaxation_side=RelaxationSide.BOTH, persistent_solvers=None,
-                   use_linear_relaxation=True, large_eval_tol=math.inf):
+    def set_input(self, relaxation_side=RelaxationSide.BOTH, use_linear_relaxation=True, large_coef=1e5,
+                  small_coef=1e-10, safety_tol=1e-10):
+        super(BasePWRelaxationData, self).set_input(relaxation_side=relaxation_side,
+                                                    use_linear_relaxation=use_linear_relaxation, large_coef=large_coef,
+                                                    small_coef=small_coef, safety_tol=safety_tol)
         self._partitions = ComponentMap()
         self._saved_partitions = list()
-        BaseRelaxationData._set_input(self, relaxation_side=relaxation_side, persistent_solvers=persistent_solvers,
-                                      use_linear_relaxation=use_linear_relaxation, large_eval_tol=large_eval_tol)
 
     def add_partition_point(self):
         """
