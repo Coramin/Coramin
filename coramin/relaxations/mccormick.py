@@ -250,25 +250,25 @@ class PWMcCormickRelaxationData(BasePWRelaxationData):
         x2_lb, x2_ub = _get_bnds_tuple(self._x2)
 
         if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}:
-            self._slopes[0, 1].value = x2_lb
-            self._slopes[0, 2].value = x1_lb
-            self._intercepts[0].value = -x1_lb * x2_lb
+            self._slopes[0, 1]._value = x2_lb
+            self._slopes[0, 2]._value = x1_lb
+            self._intercepts[0]._value = -x1_lb * x2_lb
 
-            self._slopes[1, 1].value = x2_ub
-            self._slopes[1, 2].value = x1_ub
-            self._intercepts[1].value = -x1_ub * x2_ub
+            self._slopes[1, 1]._value = x2_ub
+            self._slopes[1, 2]._value = x1_ub
+            self._intercepts[1]._value = -x1_ub * x2_ub
 
             self._check_expr(0)
             self._check_expr(1)
 
         if self.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}:
-            self._slopes[2, 1].value = x2_lb
-            self._slopes[2, 2].value = x1_ub
-            self._intercepts[2].value = -x1_ub * x2_lb
+            self._slopes[2, 1]._value = x2_lb
+            self._slopes[2, 2]._value = x1_ub
+            self._intercepts[2]._value = -x1_ub * x2_lb
 
-            self._slopes[3, 1].value = x2_ub
-            self._slopes[3, 2].value = x1_lb
-            self._intercepts[3].value = -x1_lb * x2_ub
+            self._slopes[3, 1]._value = x2_ub
+            self._slopes[3, 2]._value = x1_lb
+            self._intercepts[3]._value = -x1_lb * x2_ub
 
             self._check_expr(2)
             self._check_expr(3)
