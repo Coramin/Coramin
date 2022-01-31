@@ -1,5 +1,5 @@
-import pyomo.environ as pe
 import logging
+import pyomo.environ as pe
 import warnings
 import math
 
