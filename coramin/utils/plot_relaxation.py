@@ -7,7 +7,10 @@ import pyomo.environ as pe
 from .pyomo_utils import get_objective
 from .coramin_enums import RelaxationSide
 from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
-import tqdm
+try:
+    import tqdm
+except ImportError:
+    tqdm = None
 
 
 def _solve(m, using_persistent_solver, solver, rhs_vars, aux_var, obj):
@@ -140,7 +143,8 @@ def _plot_3d(m, relaxation, solver, show_plot, num_pts):
     w_max = np.empty((num_pts, num_pts), dtype=np.double)
 
     rhs_expr = relaxation.get_rhs_expr()
-    for x_ndx, _x in tqdm.tqdm(list(enumerate(x_list))):
+
+    def sub_loop(x_ndx, _x):
         x.fix(_x)
         for y_ndx, _y in enumerate(y_list):
             y.fix(_y)
@@ -151,6 +155,13 @@ def _plot_3d(m, relaxation, solver, show_plot, num_pts):
             if relaxation.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
                 _solve(m, using_persistent_solver, solver, rhs_vars, w, m._overestimator_obj)
                 w_max[x_ndx, y_ndx] = w.value
+
+    if tqdm is not None:
+        for x_ndx, _x in tqdm.tqdm(list(enumerate(x_list))):
+            sub_loop(x_ndx, _x)
+    else:
+        for x_ndx, _x in enumerate(x_list):
+            sub_loop(x_ndx, _x)
 
     plotly_data = list()
     plotly_data.append(go.Surface(x=x_list, y=y_list, z=w_true, name=str(rhs_expr)))

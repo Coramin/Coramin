@@ -47,16 +47,10 @@ def _get_relaxation_vals(rhs_vars: Sequence[_GeneralVarData],
                          eval_pts: List[Tuple[float, ...]],
                          rel_side: coramin.utils.RelaxationSide,
                          linear: bool = True) -> List[float]:
-    opt = appsi.solvers.Gurobi()
-    opt.update_config.update_vars = True
-    opt.update_config.check_for_new_or_removed_vars = False
-    opt.update_config.check_for_new_or_removed_constraints = False
-    opt.update_config.check_for_new_or_removed_params = False
-    opt.update_config.update_constraints = False
-    opt.update_config.update_params = False
-    opt.update_config.update_named_expressions = False
     if linear:
-        opt.update_config.treat_fixed_vars_as_params = False
+        opt = appsi.solvers.Gurobi()
+    else:
+        opt = appsi.solvers.Ipopt()
 
     if rel_side == coramin.utils.RelaxationSide.UNDER:
         sense = pe.minimize
