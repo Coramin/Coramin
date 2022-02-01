@@ -475,19 +475,18 @@ class BaseRelaxationData(_BlockData):
         self._oa_points = dict()
         self._oa_param_indices = pe.ComponentMap()
         self._current_param_index = 0
-        del self._oa_params
-        self._oa_params = None
-        del self._cuts
-        self._cuts = None
+        if self._oa_params is not None:
+            del self._oa_params
+            self._oa_params = pe.Param(pe.Any, mutable=True)
+        if self._cuts is not None:
+            del self._cuts
+            self._cuts = pe.Constraint(pe.Any)
 
     def pop_oa_points(self, key=None):
         """
         Use the most recently saved list of OA points
         """
         self.clear_oa_points()
-        del self._oa_params, self._cuts
-        self._oa_params = IndexedParam(pe.Any, mutable=True)
-        self._cuts = IndexedConstraint(pe.Any)
         if key is None:
             list_of_points = self._saved_oa_points.pop(-1)
         else:

@@ -95,11 +95,18 @@ def _check_unbounded(m: _BlockData,
         sense = pe.maximize
     m.obj = pe.Objective(expr=rel.get_aux_var(), sense=sense)
 
-    if linear:
-        opt = appsi.solvers.Gurobi()
-        opt.gurobi_options['DualReductions'] = 0
-    else:
-        opt = appsi.solvers.Ipopt()
+    for v in rel.get_rhs_vars():
+        if v.has_lb() and v.has_ub():
+            v.fix(0.5*(v.lb + v.ub))
+        elif v.has_lb():
+            v.fix(v.lb + 0.1)
+        elif v.has_ub():
+            v.fix(v.ub - 0.1)
+        else:
+            v.fix(1)
+
+    opt = appsi.solvers.Gurobi()
+    opt.gurobi_options['DualReductions'] = 0
     opt.config.load_solution = False
     res = opt.solve(m)
 

@@ -201,7 +201,7 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub, obbt_info, reset=Fals
     return new_bnd
 
 
-def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress_bar=False, reset=False, time_limit=math.inf):
+def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress_bar=False, reset=False, time_limit=math.inf, progress_bar_string=None):
     """
     Tighten the lower bounds of all variables in vardatalist (or self.vars_to_tighten if vardatalist is None).
 
@@ -225,15 +225,19 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress
     obbt_info.total_num_problems += len(vardatalist)
 
     if with_progress_bar:
-        if lb_or_ub == 'lb':
-            bnd_str = 'LBs'
+        if progress_bar_string is None:
+            if lb_or_ub == 'lb':
+                bnd_str = 'LBs'
+            else:
+                bnd_str = 'UBs'
+            bnd_str = 'OBBT ' + bnd_str
         else:
-            bnd_str = 'UBs'
+            bnd_str = progress_bar_string
         if mpi_available:
             tqdm_position = mpiu.MPI.COMM_WORLD.Get_rank()
         else:
             tqdm_position = 0
-        for v in tqdm(vardatalist, ncols=100, desc='OBBT '+bnd_str, leave=False, position=tqdm_position):
+        for v in tqdm(vardatalist, ncols=100, desc=bnd_str, leave=False, position=tqdm_position):
             if time.time() - t0 > time_limit:
                 if lb_or_ub == 'lb':
                     if v.lb is None:
@@ -373,7 +377,7 @@ def _build_vardatalist(model, varlist=None, warning_threshold=0):
 
 def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
                  direction='both', reset=False, time_limit=math.inf, parallel=True, collect_obbt_info=False,
-                 warning_threshold=0):
+                 warning_threshold=0, progress_bar_string=None):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
 
@@ -438,7 +442,8 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
                                                obbt_info=obbt_info,
                                                with_progress_bar=with_progress_bar,
                                                reset=reset,
-                                               time_limit=(time_limit - (time.time() - t0)))
+                                               time_limit=(time_limit - (time.time() - t0)),
+                                               progress_bar_string=progress_bar_string)
         else:
             local_lower_bounds = list()
             for v in local_vardata_list:
@@ -453,7 +458,8 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
                                                obbt_info=obbt_info,
                                                with_progress_bar=with_progress_bar,
                                                reset=reset,
-                                               time_limit=(time_limit - (time.time() - t0)))
+                                               time_limit=(time_limit - (time.time() - t0)),
+                                               progress_bar_string=progress_bar_string)
         else:
             local_upper_bounds = list()
             for v in local_vardata_list:
