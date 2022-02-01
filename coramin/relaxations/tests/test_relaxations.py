@@ -609,6 +609,39 @@ class TestRelaxationBasics(unittest.TestCase):
         rel.small_coef = 1e-10
         rel.rebuild()
 
+    def options_switching_helper(self, rel: coramin.relaxations.BaseRelaxationData):
+        self.assertIsNone(rel._original_constraint)
+        self.assertIsNone(rel._nonlinear)
+        self.assertIsNotNone(rel._oa_params)
+        self.assertIsNotNone(rel._cuts)
+        self.assertEqual(len(rel._cuts), 2)
+        rel.clear_oa_points()
+        self.assertEqual(len(rel._cuts), 0)
+        rel.add_oa_point(tuple(v.lb for v in rel.get_rhs_vars()))
+        self.assertEqual(len(rel._cuts), 0)
+        rel.rebuild(ensure_oa_at_vertices=False)
+        self.assertEqual(len(rel._cuts), 1)
+        rel.rebuild()
+        self.assertEqual(len(rel._cuts), 2)
+        rel.use_linear_relaxation = False
+        rel.rebuild()
+        self.assertIsNone(rel._original_constraint)
+        self.assertIsNone(rel._cuts)
+        self.assertIsNotNone(rel._nonlinear)
+        for v in rel.get_rhs_vars():
+            v.value = 1
+        with self.assertRaisesRegex(ValueError, 'Can only add an OA cut when using a linear relaxation'):
+            rel.add_cut(check_violation=False)
+        rel.rebuild(build_nonlinear_constraint=True)
+        self.assertIsNotNone(rel._original_constraint)
+        self.assertIsNone(rel._cuts)
+        self.assertIsNone(rel._nonlinear)
+        rel.use_linear_relaxation = True
+        rel.rebuild()
+        self.assertIsNone(rel._original_constraint)
+        self.assertIsNotNone(rel._cuts)
+        self.assertIsNone(rel._nonlinear)
+
     def get_base_pyomo_model(self, xlb=-1.5, xub=0.8, ylb=-2, yub=1):
         m = pe.ConcreteModel()
         m.x = pe.Var(bounds=(xlb, xub))
@@ -621,6 +654,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.PWXSquaredRelaxation()
         m.rel.build(x=m.x, aux_var=m.z)
         e = m.x**2
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e)
         self.util_methods_helper(m.rel, e, m.z, True, False)
         self.equal_at_points_helper(m, m.rel, e, [(-1.5,), (0.8,)])
@@ -641,6 +675,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.PWUnivariateRelaxation()
         e = pe.exp(m.x)
         m.rel.build(x=m.x, aux_var=m.z, shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=e)
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e)
         self.util_methods_helper(m.rel, e, m.z, True, False)
         self.equal_at_points_helper(m, m.rel, e, [(-1.5,), (0.8,)])
@@ -661,6 +696,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.PWUnivariateRelaxation()
         e = pe.log(m.x)
         m.rel.build(x=m.x, aux_var=m.z, shape=coramin.utils.FunctionShape.CONCAVE, f_x_expr=e)
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e)
         self.util_methods_helper(m.rel, e, m.z, False, True)
         self.equal_at_points_helper(m, m.rel, e, [(0.1,), (2.5,)])
@@ -683,6 +719,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.PWUnivariateRelaxation()
         e = m.x * pe.log(m.x)
         m.rel.build(x=m.x, aux_var=m.z, shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=e)
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e)
         self.util_methods_helper(m.rel, e, m.z, True, False)
         self.equal_at_points_helper(m, m.rel, e, [(0.1,), (2.5,)])
@@ -705,6 +742,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.PWCosRelaxation()
         m.rel.build(x=m.x, aux_var=m.z)
         e = pe.cos(m.x)
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e)
         self.util_methods_helper(m.rel, e, m.z, False, True)
         self.equal_at_points_helper(m, m.rel, e, [(-1.5,), (0.8,)])
@@ -788,6 +826,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.MultivariateRelaxation()
         m.rel.build(aux_var=m.z, shape=coramin.FunctionShape.CONVEX, f_x_expr=m.x**2 + m.y**2)
         e = m.x**2 + m.y**2
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e, 10, True, False)
         self.util_methods_helper(m.rel, e, m.z, True, False, True, False)
         with self.assertRaises(ValueError):
@@ -832,6 +871,7 @@ class TestRelaxationBasics(unittest.TestCase):
         m.rel = coramin.relaxations.AlphaBBRelaxation()
         m.rel.build(aux_var=m.z, f_x_expr=m.x*m.y)
         e = m.x*m.y
+        self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e, 10, True, False)
         self.util_methods_helper(m.rel, e, m.z, True, False, True, False)
         with self.assertRaises(ValueError):

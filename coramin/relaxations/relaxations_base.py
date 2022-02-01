@@ -404,6 +404,8 @@ class BaseRelaxationData(_BlockData):
                          f'small or large coefficient for {str(fail_var)}: {fail_coef}')
 
     def _add_oa_cut(self, pt_tuple: Tuple[float, ...], oa_cut: _OACut) -> Optional[_GeneralConstraintData]:
+        if self._nonlinear is not None or self._original_constraint is not None:
+            raise ValueError('Can only add an OA cut when using a linear relaxation')
         if self.is_rhs_convex():
             rel_side = RelaxationSide.UNDER
         else:
