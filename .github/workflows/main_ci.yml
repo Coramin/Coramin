@@ -29,7 +29,7 @@ jobs:
         conda install openmpi pymumps ipopt --no-update-deps
         pip install mpi4py
         pip install metis
-        pip install git+https://github.com/michaelbynum/pyomo/tree/appsi1
+        pip install https://github.com/michaelbynum/pyomo/archive/appsi1.zip
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
     - name: build pyomo extensions
