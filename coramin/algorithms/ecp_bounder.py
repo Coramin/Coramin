@@ -24,7 +24,6 @@ class _ECPBounder(OptSolver):
         else:
             self._using_persistent_solver = False
         self._relaxations = ComponentSet()
-        self._relaxations_not_tracking_solver = ComponentSet()
         self._relaxations_with_added_cuts = ComponentSet()
         self._pyomo_model = None
 
@@ -65,15 +64,10 @@ class _ECPBounder(OptSolver):
         final_res = SolverResults()
 
         self._relaxations = ComponentSet()
-        self._relaxations_not_tracking_solver = ComponentSet()
         self._relaxations_with_added_cuts = ComponentSet()
         for b in self._pyomo_model.component_data_objects(pe.Block, descend_into=True, active=True, sort=True):
             if isinstance(b, (BaseRelaxationData, BaseRelaxation)):
                 self._relaxations.add(b)
-                if self._using_persistent_solver:
-                    if self not in b._persistent_solvers:
-                        b.add_persistent_solver(self)
-                        self._relaxations_not_tracking_solver.add(b)
 
         for _iter in range(options.max_iter):
             if time.time() - t0 > options.time_limit:
@@ -106,9 +100,12 @@ class _ECPBounder(OptSolver):
                     if viol > max_viol:
                         max_viol = viol
                     if viol > options.feasibility_tol:
-                        b.add_cut(keep_cut=options.keep_cuts)
-                        self._relaxations_with_added_cuts.add(b)
-                        num_cuts_added += 1
+                        new_con = b.add_cut(keep_cut=options.keep_cuts)
+                        if new_con is not None:
+                            self._relaxations_with_added_cuts.add(b)
+                            num_cuts_added += 1
+                            if self._using_persistent_solver:
+                                self._subproblem_solver.add_constraint(new_con)
 
             if obj.sense == pe.minimize:
                 obj_val = res.problem.lower_bound
@@ -136,11 +133,11 @@ class _ECPBounder(OptSolver):
 
         if not options.keep_cuts:
             for b in self._relaxations_with_added_cuts:
+                if self._using_persistent_solver:
+                    self._subproblem_solver.remove_block(b)
                 b.rebuild()
-
-        if self._using_persistent_solver:
-            for b in self._relaxations_not_tracking_solver:
-                b.remove_persistent_solver(self)
+                if self._using_persistent_solver:
+                    self._subproblem_solver.add_block(b)
 
         final_res.solver.wallclock_time = time.time() - t0
         return final_res
