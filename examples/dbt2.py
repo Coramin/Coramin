@@ -11,16 +11,21 @@ import itertools
 import os
 import time
 from suspect.pyomo import read_osil
+from coramin.third_party.minlplib_tools import get_minlplib
 
+
+print('Downloading camshape800 from MINLPLib')
+if not os.path.exists(os.path.join('minlplib', 'osil', 'camshape800.osil')):
+    get_minlplib(problem_name='camshape800')
 
 print('Creating NLP and relaxation')
-nlp = read_osil('camshape800.osil', objective_prefix='obj_', constraint_prefix='con_')
+nlp = read_osil('minlplib/osil/camshape800.osil', objective_prefix='obj_', constraint_prefix='con_')
 relaxation = coramin.relaxations.relax(nlp, in_place=False, use_fbbt=True, fbbt_options={'deactivate_satisfied_constraints': True,
                                                                                          'max_iter': 2})
 
 # perform decomposition
 print('Decomposing relaxation')
-relaxation, component_map = coramin.domain_reduction.decompose_model(relaxation, max_leaf_nnz=1000)
+relaxation, component_map, termination_reason = coramin.domain_reduction.decompose_model(relaxation, max_leaf_nnz=1000)
 
 # rebuild the relaxations
 for b in coramin.relaxations.relaxation_data_objects(relaxation, descend_into=True, active=True, sort=True):
