@@ -1,5 +1,5 @@
-import pyomo.environ as pe
 import logging
+import pyomo.environ as pe
 import warnings
 import math
 
@@ -7,14 +7,7 @@ logger = logging.getLogger(__name__)
 pyo = pe
 
 
-def _copy_v_pts_without_inf(v_pts):
-    new_pts = list()
-    for pt in v_pts:
-        if pt > -math.inf and pt < math.inf:
-            new_pts.append(pt)
-    return new_pts
-
-def _get_bnds_list(v):
+def _get_bnds_tuple(v):
     lb = pe.value(v.lb)
     ub = pe.value(v.ub)
     if lb is None:
@@ -22,7 +15,11 @@ def _get_bnds_list(v):
     if ub is None:
         ub = math.inf
 
-    return [lb, ub]
+    return lb, ub
+
+
+def _get_bnds_list(v):
+    return list(_get_bnds_tuple(v))
 
 
 def var_info_str(v):

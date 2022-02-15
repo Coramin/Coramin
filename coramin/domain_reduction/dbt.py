@@ -505,7 +505,7 @@ def build_pyomo_model_from_graph(graph, block):
         new_v.domain = v.comp.domain
         if v.comp.is_fixed():
             new_v.fix(v.comp.value)
-        new_v.value = v.comp.value
+        new_v.set_value(v.comp.value, skip_validation=True)
         v.replacement_comp = new_v
 
     var_map = {id(k): v for k, v in component_map.items()}
@@ -1035,7 +1035,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=lb_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='lbs', time_limit=(time_limit - (time.time() - t0)),
-                              update_bounds=False, parallel=parallel, collect_obbt_info=True)
+                              update_bounds=False, parallel=parallel, collect_obbt_info=True,
+                              progress_bar_string=f'DBT LBs Stage {stage+1} of {num_stages} Block {block_ndx+1} of {len(stage_blocks)}')
             lower, unused_upper, obbt_info = res
             if block.is_leaf():
                 dbt_info.num_vars_attempted += obbt_info.num_problems_attempted
@@ -1050,7 +1051,8 @@ def perform_dbt(relaxation, solver, obbt_method=OBBTMethod.DECOMPOSED,
             res = normal_obbt(block_to_tighten_with, solver=solver, varlist=ub_vars,
                               objective_bound=_ub, with_progress_bar=with_progress_bar,
                               direction='ubs', time_limit=(time_limit - (time.time() - t0)),
-                              update_bounds=False, parallel=parallel, collect_obbt_info=True)
+                              update_bounds=False, parallel=parallel, collect_obbt_info=True,
+                              progress_bar_string=f'DBT UBs Stage {stage+1} of {num_stages} Block {block_ndx+1} of {len(stage_blocks)}')
 
             unused_lower, upper, obbt_info = res
             if block.is_leaf():

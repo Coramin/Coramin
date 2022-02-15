@@ -3,7 +3,7 @@ from distutils.core import Extension
 
 
 setup(name='coramin',
-      version='0.1.1',
+      version='0.5.0.dev0',
       packages=find_packages(),
       ext_modules=[],
       description='Coramin: Pyomo tools for MINLP',
@@ -13,7 +13,7 @@ setup(name='coramin',
       maintainer_email='mlbynum@sandia.gov',
       license='Revised BSD',
       url='https://github.com/Coramin/Coramin',
-      install_requires=['pyomo>=6', 'numpy', 'scipy', 'networkx'],
+      install_requires=['pyomo>6.2', 'numpy', 'scipy', 'networkx'],
       include_package_data=True,
       scripts=[],
       python_requires='>=3.7',

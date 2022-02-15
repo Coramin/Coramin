@@ -2,12 +2,12 @@ import coramin
 import unittest
 import os
 from pyomo.common.fileutils import this_file_dir
-import urllib
+from urllib.request import urlopen
 from socket import timeout
 
 
 try:
-    urllib.request.urlopen('http://www.minlplib.org', timeout=3)
+    urlopen('http://www.minlplib.org', timeout=3)
 except timeout:
     raise unittest.SkipTest('an internet connection is required to test minlplib_tools')
 

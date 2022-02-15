@@ -239,13 +239,18 @@ class TestFeasibility(unittest.TestCase):
         m = pe.ConcreteModel()
         m.x = pe.Var(bounds=(-1, 1))
         m.y = pe.Var()
-        m.x.fix(0)
+        m.x.setlb(0)
+        m.x.setub(0)
         m.c = coramin.relaxations.PWUnivariateRelaxation()
         m.c.build(x=m.x, aux_var=m.y, relaxation_side=coramin.utils.RelaxationSide.BOTH,
                   shape=coramin.utils.FunctionShape.CONVEX, f_x_expr=pe.exp(m.x))
-        self.assertEqual(id(m.c.x_fixed_con.body), id(m.y))
-        self.assertEqual(m.c.x_fixed_con.lower, 1.0)
-        self.assertEqual(m.c.x_fixed_con.upper, 1.0)
+        m.obj = pe.Objective(expr=m.y)
+        opt = pe.SolverFactory('appsi_gurobi')
+        res = opt.solve(m)
+        self.assertAlmostEqual(m.y.value, 1)
+        m.obj.sense = pe.maximize
+        res = opt.solve(m)
+        self.assertAlmostEqual(m.y.value, 1)
 
     def test_x_sq(self):
         m = pe.ConcreteModel()
@@ -259,7 +264,7 @@ class TestFeasibility(unittest.TestCase):
         m.c2.add(m.z >= m.y - m.p)
         m.c2.add(m.z >= m.p - m.y)
         m.obj = pe.Objective(expr=m.z)
-        opt = pe.SolverFactory('gurobi_direct')
+        opt = pe.SolverFactory('appsi_gurobi')
         for xval in [-1, -0.5, 0, 0.5, 1]:
             pval = xval**2
             m.x.fix(xval)
