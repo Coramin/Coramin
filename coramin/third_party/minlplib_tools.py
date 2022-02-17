@@ -255,10 +255,12 @@ def filter_minlplib_instances(instancedata_filename=None,
             continue
         
         case_name = row[headings['name']]
-        
+
         available_formats = row[headings['formats']]
         available_formats = available_formats.replace('set([', '')
         available_formats = available_formats.replace('])', '')
+        available_formats = available_formats.replace('{', '')
+        available_formats = available_formats.replace('}', '')
         available_formats = available_formats.replace(' ', '')
         available_formats = available_formats.replace("'", '')
         available_formats = available_formats.split(',')
