@@ -448,7 +448,7 @@ class TestDecompose(unittest.TestCase):
             r.rebuild(build_nonlinear_constraint=True)
         opt = pe.SolverFactory('ipopt')
         res = opt.solve(m, tee=False)
-        relaxed_res = opt.solve(relaxed_m, tee=False)
+        relaxed_res = opt.solve(relaxed_m, tee=True)
         decomposed_res = opt.solve(decomposed_m, tee=False)
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
