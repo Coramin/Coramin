@@ -1,6 +1,6 @@
 import networkx as nx
-from typing import Sequence, MutableSet
-from pyomo.contrib.fbbt.fbbt import fbbt
+from typing import Sequence, MutableSet, Optional
+from pyomo.contrib.fbbt.fbbt import fbbt, compute_bounds_on_expr
 import time
 import enum
 import warnings
@@ -27,6 +27,7 @@ from coramin.utils import RelaxationSide
 from collections import defaultdict
 from pyomo.core.expr import numeric_expr
 from pyomo.core.expr.visitor import ExpressionValueVisitor, nonpyomo_leaf_types
+from pyomo.common.modeling import unique_component_name
 
 
 logger = logging.getLogger(__name__)
@@ -688,11 +689,11 @@ def split_metis(graph, model):
     return tree, partitioning_ratio
 
 
-def convert_pyomo_model_to_bipartite_graph(m):
+def convert_pyomo_model_to_bipartite_graph(m: _BlockData):
     """
     Parameters
     ----------
-    m: pe.Block
+    m: _BlockData
 
     Returns
     -------
@@ -755,8 +756,8 @@ def build_pyomo_model_from_graph(graph, block):
     assert len(cons) == len(set(cons))
     assert len(rels) == len(set(rels))
 
-    block.var_names = pe.Set(initialize=var_names, ordered=True)
-    block.con_names = pe.Set(initialize=con_names, ordered=True)
+    block.var_names = pe.Set(initialize=var_names)
+    block.con_names = pe.Set(initialize=con_names)
     block.vars = pe.Var(block.var_names)
     block.cons = pe.Constraint(block.con_names)
     block.rels = pe.Block()
@@ -828,17 +829,63 @@ def compute_partition_ratio(original_model: _BlockData, decomposed_model: TreeBl
     return pr
 
 
-def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_num_stages=True):
+def _reformulate_objective(model):
+    current_obj = get_objective(model)
+    if current_obj is None:
+        raise ValueError('No active objective found!')
+    if not current_obj.expr.is_variable_type():
+        obj_var_name = unique_component_name(model, 'obj_var')
+        obj_var = pe.Var(bounds=compute_bounds_on_expr(current_obj.expr))
+        model.add_component(obj_var_name, obj_var)
+        model.del_component(current_obj)
+        new_objective = pe.Objective(expr=model.obj_var)
+        new_obj_name = unique_component_name(model, 'objective')
+        model.add_component(new_obj_name, new_objective)
+        if current_obj.sense == pe.minimize:
+            obj_con = pe.Constraint(expr=current_obj.expr <= obj_var)
+        else:
+            obj_con = pe.Constraint(expr=current_obj.expr >= obj_var)
+            new_objective.sense = pe.maximize
+        obj_con_name = unique_component_name(model, 'obj_con')
+        model.add_component(obj_con_name, obj_con)
+
+
+def _eliminate_mutable_params(model):
+    sub_map = dict()
+    for p in nonrelaxation_component_data_objects(model, pe.Param, descend_into=True):
+        sub_map[id(p)] = p.value
+
+    for c in nonrelaxation_component_data_objects(model, pe.Constraint, active=True, descend_into=True):
+        if c.lower is None:
+            new_lower = None
+        else:
+            new_lower = replace_expressions(c.lower, sub_map,
+                                            descend_into_named_expressions=True,
+                                            remove_named_expressions=True)
+        new_body = replace_expressions(c.body, sub_map,
+                                       descend_into_named_expressions=True,
+                                       remove_named_expressions=True)
+        if c.upper is None:
+            new_upper = None
+        else:
+            new_upper = replace_expressions(c.upper, sub_map,
+                                            descend_into_named_expressions=True,
+                                            remove_named_expressions=True)
+        c.set_value((new_lower, new_body, new_upper))
+
+
+def _decompose_model(model: _BlockData, max_leaf_nnz: Optional[int] = None,
+                     min_partition_ratio: float = 1.25, limit_num_stages: bool = True):
     """
     Parameters
     ----------
-    model: pe.Block
+    model: _BlockData
         The model to decompose
     max_leaf_nnz: int
         maximum number nonzeros in the constraint jacobian of the leaves
     min_partition_ratio: float
-        If the partition ration is less than min_partition_ratio, the partition is not accepted and partitioning stops.
-        This value should be between 1 and 2.
+        If the partition ration is less than min_partition_ratio, the partition is not
+        accepted and partitioning stops. This value should be between 1 and 2.
     limit_num_stages: bool
         If True, partitioning will stop before the number of stages produced exceeds
         round(math.log10(number of nonzeros in the constraint jacobian of model))
@@ -852,6 +899,13 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_nu
     termination_reason: DecompositionStatus
         An enum member from DecompositionStatus
     """
+
+    # by reformulating the objective, we can make better use of the incumbent when
+    # doing OBBT
+    _reformulate_objective(model)
+    # we don't want the original param objects to be in the new model
+    _eliminate_mutable_params(model)
+
     graph = convert_pyomo_model_to_bipartite_graph(model)
     logger.debug('converted pyomo model to bipartite graph')
     original_nnz = graph.number_of_edges()
@@ -876,7 +930,8 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_nu
         logger.debug('done building pyomo model from graph')
     else:
         root_tree, partitioning_ratio = split_metis(graph=graph, model=model)
-        logger.debug('partitioned original tree; partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
+        logger.debug('partitioned original tree; partitioning ratio: {ratio}'.format(
+            ratio=partitioning_ratio))
         if partitioning_ratio < min_partition_ratio:
             logger.debug('obtained bad partitioning ratio; abandoning partition')
             new_model = TreeBlock(concrete=True)
@@ -890,8 +945,10 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_nu
             termination_reason = DecompositionStatus.normal
             needs_split = list()
             for child in parent.children:
-                logger.debug('number of NNZ in child: {0}'.format(child.number_of_edges()))
-                if child.number_of_edges() > max_leaf_nnz and num_cons_in_graph(child) > 1:
+                logger.debug(
+                    'number of NNZ in child: {0}'.format(child.number_of_edges()))
+                if child.number_of_edges() > max_leaf_nnz and num_cons_in_graph(
+                        child) > 1:
                     needs_split.append((child, parent, 1))
 
             while len(needs_split) > 0:
@@ -899,25 +956,34 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_nu
                 _graph, _parent, _stage = needs_split.pop()
                 try:
                     if _stage + 1 >= max_stages:
-                        logger.debug('stage {0}: not partitiong graph with {1} NNZ due to the max stages rule;'.format(_stage, _graph.number_of_edges()))
+                        logger.debug(f'stage {_stage}: not partitiong graph with '
+                                     f'{_graph.number_of_edges()} NNZ due to the max '
+                                     f'stages rule;')
                         continue
-                    logger.debug('stage {0}: partitioning graph with {1} NNZ'.format(_stage, _graph.number_of_edges()))
-                    sub_tree, partitioning_ratio = split_metis(graph=_graph, model=model)
-                    logger.debug('partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
+                    logger.debug(f'stage {_stage}: partitioning graph with '
+                                 f'{_graph.number_of_edges()} NNZ')
+                    sub_tree, partitioning_ratio = split_metis(graph=_graph,
+                                                               model=model)
+                    logger.debug(
+                        'partitioning ratio: {ratio}'.format(ratio=partitioning_ratio))
                     if partitioning_ratio > min_partition_ratio:
                         logger.debug('partitioned {0}'.format(str(_graph)))
                         _parent.children.discard(_graph)
                         _parent.children.add(sub_tree)
 
                         for child in sub_tree.children:
-                            logger.debug('number of NNZ in child: {0}'.format(child.number_of_edges()))
-                            if child.number_of_edges() > max_leaf_nnz and num_cons_in_graph(child) > 1:
-                                needs_split.append((child, sub_tree, _stage+1))
+                            logger.debug('number of NNZ in child: {0}'.format(
+                                child.number_of_edges()))
+                            if (child.number_of_edges() > max_leaf_nnz
+                                    and num_cons_in_graph(child) > 1):
+                                needs_split.append((child, sub_tree, _stage + 1))
                     else:
-                        logger.debug('obtained bad partitioning ratio; abandoning partition')
+                        logger.debug(
+                            'obtained bad partitioning ratio; abandoning partition')
                 except DecompositionError:
                     termination_reason = DecompositionStatus.error
-                    logger.error('failed to partition graph with {0} NNZ'.format(_graph.number_of_edges()))
+                    logger.error('failed to partition graph with {0} NNZ'.format(
+                        _graph.number_of_edges()))
 
             logger.debug('Tree Info:')
             root_tree.log()
@@ -929,14 +995,71 @@ def decompose_model(model, max_leaf_nnz=None, min_partition_ratio=1.25, limit_nu
     obj = get_objective(model)
     if obj is not None:
         var_map = {id(k): v for k, v in component_map.items()}
-        new_model.objective = pe.Objective(expr=replace_expressions(obj.expr, substitution_map=var_map,
-                                                                    remove_named_expressions=True),
-                                           sense=obj.sense)
+        new_model.objective = pe.Objective(
+            expr=replace_expressions(obj.expr, substitution_map=var_map,
+                                     remove_named_expressions=True),
+            sense=obj.sense)
         logger.debug('done adding objective to new model')
     else:
         logger.debug('No objective was found to add to the new model')
 
     return new_model, component_map, termination_reason
+
+
+def decompose_model(model: _BlockData, max_leaf_nnz: Optional[int] = None,
+                    min_partition_ratio: float = 1.25, limit_num_stages: bool = True):
+    """
+    Parameters
+    ----------
+    model: _BlockData
+        The model to decompose
+    max_leaf_nnz: int
+        maximum number nonzeros in the constraint jacobian of the leaves
+    min_partition_ratio: float
+        If the partition ration is less than min_partition_ratio, the partition is not
+        accepted and partitioning stops. This value should be between 1 and 2.
+    limit_num_stages: bool
+        If True, partitioning will stop before the number of stages produced exceeds
+        round(math.log10(number of nonzeros in the constraint jacobian of model))
+
+    Returns
+    -------
+    new_model: TreeBlockData
+        The decomposed model
+    component_map: pe.ComponentMap
+        A ComponentMap mapping varialbes and constraints in model to those in new_model
+    termination_reason: DecompositionStatus
+        An enum member from DecompositionStatus
+    """
+    # we have to clone the model because we modify it in _refine_partition
+    all_comps = list(ComponentSet(
+        nonrelaxation_component_data_objects(model, pe.Var, descend_into=True)))
+    all_comps.extend(ComponentSet(
+        nonrelaxation_component_data_objects(model, pe.Constraint, active=True,
+                                             descend_into=True)))
+    all_comps.extend(relaxation_data_objects(model, descend_into=True, active=True))
+    all_comps.extend(ComponentSet(
+        nonrelaxation_component_data_objects(model, pe.Objective, active=True,
+                                             descend_into=True)))
+    tmp_name = unique_component_name(model, 'all_comps')
+    setattr(model, tmp_name, all_comps)
+    new_model = model.clone()
+    old_to_new_comps_map = pe.ComponentMap(zip(getattr(model, tmp_name),
+                                               getattr(new_model, tmp_name)))
+    delattr(model, tmp_name)
+    delattr(new_model, tmp_name)
+    model = new_model
+
+    tmp = _decompose_model(model, max_leaf_nnz=max_leaf_nnz,
+                           min_partition_ratio=min_partition_ratio,
+                           limit_num_stages=limit_num_stages)
+    tree_model, component_map, termination_reason = tmp
+
+    for orig_comp, clone_comp in list(old_to_new_comps_map.items()):
+        if clone_comp in component_map:
+            old_to_new_comps_map[orig_comp] = component_map[clone_comp]
+
+    return new_model, old_to_new_comps_map, termination_reason
 
 
 def collect_vars_to_tighten_from_graph(graph):
