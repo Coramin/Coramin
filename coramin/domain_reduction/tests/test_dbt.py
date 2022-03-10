@@ -11,7 +11,7 @@ from pyomo.core.expr.visitor import identify_variables
 from pyomo.core.expr import differentiate
 from egret.thirdparty.get_pglib_opf import get_pglib_opf
 from egret.data.model_data import ModelData
-from egret.models.acopf import create_rsv_acopf_model
+from egret.models.acopf import create_psv_acopf_model
 import os
 from coramin.utils.pyomo_utils import get_objective
 import filecmp
@@ -425,10 +425,10 @@ class TestDecompose(unittest.TestCase):
         if not os.path.isdir(pglib_dir):
             get_pglib_opf(download_dir=test_dir)
         md = ModelData.read(filename=os.path.join(pglib_dir, case))
-        m, scaled_md = create_rsv_acopf_model(md)
+        m, scaled_md = create_psv_acopf_model(md)
         relaxed_m = coramin.relaxations.relax(m,
                                               in_place=False,
-                                              use_fbbt=True,
+                                              use_fbbt=False,
                                               fbbt_options={'deactivate_satisfied_constraints': True,
                                                             'max_iter': 2})
         (decomposed_m,
@@ -447,9 +447,9 @@ class TestDecompose(unittest.TestCase):
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
         opt = pe.SolverFactory('ipopt')
-        res = opt.solve(m, tee=False)
+        res = opt.solve(m, tee=True)
         relaxed_res = opt.solve(relaxed_m, tee=True)
-        decomposed_res = opt.solve(decomposed_m, tee=False)
+        decomposed_res = opt.solve(decomposed_m, tee=True)
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(decomposed_res.solver.termination_condition, pe.TerminationCondition.optimal)
