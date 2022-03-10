@@ -202,7 +202,7 @@ class TestSplit(unittest.TestCase):
         g.add_edge(v5, c2)
         g.add_edge(v6, c2)
 
-        tree, partitioning_ratio = split_metis(graph=g)
+        tree, partitioning_ratio = split_metis(graph=g, model=m)
         self.assertAlmostEqual(partitioning_ratio, 3*12/(14*1+6*2+6*2))
 
         children = list(tree.children)
@@ -438,6 +438,8 @@ class TestDecompose(unittest.TestCase):
                                                min_partition_ratio=1.4,
                                                limit_num_stages=True)
         self.assertEqual(termination_reason, expected_termination)
+        if expected_termination == coramin.domain_reduction.dbt.DecompositionStatus.normal:
+            self.assertGreaterEqual(decomposed_m.num_stages(), 2)
         for r in coramin.relaxations.relaxation_data_objects(block=relaxed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
@@ -466,6 +468,7 @@ class TestDecompose(unittest.TestCase):
                                                                                      pe.Var,
                                                                                      sort=True,
                                                                                      descend_into=True))
+        relaxed_vars = [v for v in relaxed_vars if not v.fixed]
         relaxed_cons = list(coramin.relaxations.nonrelaxation_component_data_objects(relaxed_m,
                                                                                      pe.Constraint,
                                                                                      active=True,
@@ -496,17 +499,26 @@ class TestDecompose(unittest.TestCase):
         relaxed_vars_mapped = list()
         for i in relaxed_vars:
             relaxed_vars_mapped.append(component_map[i])
-        var_diff = ComponentSet(decomposed_vars) - ComponentSet(relaxed_vars_mapped)
-        vars_in_linking_cons = ComponentSet()
+        relaxed_vars_mapped = ComponentSet(relaxed_vars_mapped)
+        var_diff = ComponentSet(decomposed_vars) - relaxed_vars_mapped
+        extra_vars = ComponentSet()
         for c in linking_cons:
             for v in identify_variables(c.body, include_fixed=True):
-                vars_in_linking_cons.add(v)
+                extra_vars.add(v)
+        for v in coramin.relaxations.nonrelaxation_component_data_objects(decomposed_m, pe.Var, descend_into=True):
+            if 'dbt_partition_vars' in str(v) or 'obj_var' in str(v):
+                extra_vars.add(v)
+        extra_vars = extra_vars - relaxed_vars_mapped
+        extra_cons = ComponentSet()
+        for c in coramin.relaxations.nonrelaxation_component_data_objects(decomposed_m, pe.Constraint, active=True, descend_into=True):
+            if 'dbt_partition_cons' in str(c) or 'obj_con' in str(c):
+                extra_cons.add(c)
         for v in var_diff:
-            self.assertIn(v, vars_in_linking_cons)
-        var_diff = ComponentSet(relaxed_vars_mapped) - ComponentSet(decomposed_vars)
+            self.assertIn(v, extra_vars)
+        var_diff = relaxed_vars_mapped - ComponentSet(decomposed_vars)
         self.assertEqual(len(var_diff), 0)
-        self.assertEqual(len(relaxed_vars) + len(linking_cons), len(decomposed_vars))
-        self.assertEqual(len(relaxed_cons) + len(linking_cons), len(decomposed_cons))
+        self.assertEqual(len(relaxed_vars) + len(extra_vars), len(decomposed_vars))
+        self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(extra_cons), len(decomposed_cons))
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
     def test_decompose1(self):

@@ -533,30 +533,30 @@ def _refine_partition(graph: nx.Graph, model: _BlockData,
             continue
 
         # update the model
-        if not hasattr(model, 'partition_vars'):
-            model.partition_vars = pe.VarList()
-            model.partition_cons = pe.ConstraintList()
+        if not hasattr(model, 'dbt_partition_vars'):
+            model.dbt_partition_vars = pe.VarList()
+            model.dbt_partition_cons = pe.ConstraintList()
 
-        graph_a_var = model.partition_vars.add()
-        graph_b_var = model.partition_vars.add()
+        graph_a_var = model.dbt_partition_vars.add()
+        graph_b_var = model.dbt_partition_vars.add()
 
         if c.lower is not None and c.upper is not None:
-            new_c1 = model.partition_cons.add(graph_a_var == sum(graph_a_args))
-            new_c2 = model.partition_cons.add(graph_b_var == sum(graph_b_args))
+            new_c1 = model.dbt_partition_cons.add(graph_a_var == sum(graph_a_args))
+            new_c2 = model.dbt_partition_cons.add(graph_b_var == sum(graph_b_args))
             if c.equality:
-                new_c3 = model.partition_cons.add(graph_a_var + graph_b_var == c.lower)
+                new_c3 = model.dbt_partition_cons.add(graph_a_var + graph_b_var == c.lower)
             else:
-                new_c3 = model.partition_cons.add((c.lower, graph_a_var + graph_b_var, c.upper))
+                new_c3 = model.dbt_partition_cons.add((c.lower, graph_a_var + graph_b_var, c.upper))
         elif c.lower is None:
             assert c.upper is not None
-            new_c1 = model.partition_cons.add(graph_a_var >= sum(graph_a_args))
-            new_c2 = model.partition_cons.add(graph_b_var >= sum(graph_b_args))
-            new_c3 = model.partition_cons.add(graph_a_var + graph_b_var <= c.upper)
+            new_c1 = model.dbt_partition_cons.add(graph_a_var >= sum(graph_a_args))
+            new_c2 = model.dbt_partition_cons.add(graph_b_var >= sum(graph_b_args))
+            new_c3 = model.dbt_partition_cons.add(graph_a_var + graph_b_var <= c.upper)
         else:
             assert c.upper is None
-            new_c1 = model.partition_cons.add(graph_a_var <= sum(graph_a_args))
-            new_c2 = model.partition_cons.add(graph_b_var <= sum(graph_b_args))
-            new_c3 = model.partition_cons.add(graph_a_var + graph_b_var >= c.lower)
+            new_c1 = model.dbt_partition_cons.add(graph_a_var <= sum(graph_a_args))
+            new_c2 = model.dbt_partition_cons.add(graph_b_var <= sum(graph_b_args))
+            new_c3 = model.dbt_partition_cons.add(graph_a_var + graph_b_var >= c.lower)
         c.deactivate()
 
         # update the graph
@@ -1059,7 +1059,7 @@ def decompose_model(model: _BlockData, max_leaf_nnz: Optional[int] = None,
         if clone_comp in component_map:
             old_to_new_comps_map[orig_comp] = component_map[clone_comp]
 
-    return new_model, old_to_new_comps_map, termination_reason
+    return tree_model, old_to_new_comps_map, termination_reason
 
 
 def collect_vars_to_tighten_from_graph(graph):
