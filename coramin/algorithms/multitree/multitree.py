@@ -26,6 +26,8 @@ import time
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.objective import _GeneralObjectiveData
 from coramin.utils.pyomo_utils import get_objective
+from pyomo.common.collections.component_set import ComponentSet
+from pyomo.common.modeling import unique_component_name
 
 
 logger = logging.getLogger(__name__)
@@ -51,11 +53,15 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("solver_output_logger", ConfigValue())
         self.declare("log_level", ConfigValue(domain=NonNegativeInt))
         self.declare("feasibility_tolerance", ConfigValue(domain=PositiveFloat))
+        self.declare("abs_gap", ConfigValue(domain=PositiveFloat))
+        self.declare("rel_gap", ConfigValue(domain=PositiveFloat))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
         self.feasibility_tolerance = 1e-6
         self.time_limit = 600
+        self.abs_gap = 1e-4
+        self.rel_gap = 0.01
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -105,6 +111,7 @@ class MultiTree(Solver):
         self._relaxation_objects: Optional[Sequence[BaseRelaxationData]] = None
         self._stop: Optional[TerminationCondition] = None
         self._discrete_vars: Optional[Sequence[_GeneralVarData]] = None
+        self._rel_to_nlp_map: Optional[MutableMapping] = None
 
     def available(self):
         if (
@@ -137,6 +144,11 @@ class MultiTree(Solver):
             return True, TerminationCondition.maxTimeLimit
         if self._stop is not None:
             return True, self._stop
+        abs_gap, rel_gap = self._get_abs_and_rel_gap()
+        if abs_gap <= self.config.abs_gap:
+            return True, TerminationCondition.optimal
+        if rel_gap <= self.config.rel_gap:
+            return True, TerminationCondition.optimal
         return False, None
 
     def _get_results(self, termination_condition: TerminationCondition) -> Results:
@@ -168,6 +180,20 @@ class MultiTree(Solver):
             dual_bound = self._best_objective_bound
         return dual_bound
 
+    def _get_abs_and_rel_gap(self):
+        primal_bound = self._get_primal_bound()
+        dual_bound = self._get_dual_bound()
+        abs_gap = abs(primal_bound - dual_bound)
+        if abs_gap == 0:
+            rel_gap = 0
+        elif primal_bound == 0:
+            rel_gap = math.inf
+        elif math.isinf(abs_gap):
+            rel_gap = math.inf
+        else:
+            rel_gap = abs_gap / abs(primal_bound)
+        return abs_gap, rel_gap
+
     def _log(self, header=False):
         logger = self.config.solver_output_logger
         log_level = self.config.log_level
@@ -180,15 +206,7 @@ class MultiTree(Solver):
         else:
             primal_bound = self._get_primal_bound()
             dual_bound = self._get_dual_bound()
-            abs_gap = abs(primal_bound - dual_bound)
-            if abs_gap == 0:
-                rel_gap = 0
-            elif primal_bound == 0:
-                rel_gap = math.inf
-            elif math.isinf(abs_gap):
-                rel_gap = math.inf
-            else:
-                rel_gap = abs_gap / abs(primal_bound)
+            abs_gap, rel_gap = self._get_abs_and_rel_gap()
             elapsed_time = time.time() - self._start_time
             logger.log(
                 log_level,
@@ -211,7 +229,52 @@ class MultiTree(Solver):
                 ):
                     self._best_objective_bound = res.best_objective_bound
 
-    def _solve_relaxation(self):
+    def _update_primal_bound(self, res: Results):
+        should_update = False
+        if res.best_feasible_objective is not None:
+            if self._objective.sense == pe.minimize:
+                if (
+                    self._best_feasible_objective is None
+                    or res.best_feasible_objective < self._best_feasible_objective
+                ):
+                    should_update = True
+            else:
+                if (
+                    self._best_feasible_objective is None
+                    or res.best_feasible_objective > self._best_feasible_objective
+                ):
+                    should_update = True
+
+        if should_update:
+            self._best_feasible_objective = res.best_feasible_objective
+            self._incumbent = pe.ComponentMap()
+            for v in self._rel_to_nlp_map.values():
+                self._incumbent[v] = v.value
+
+    def _solve_nlp_with_fixed_vars(
+        self, integer_var_values: MutableMapping[_GeneralVarData, float]
+    ) -> Results:
+        fixed_vars = list()
+        for v in self._discrete_vars:
+            if v.fixed:
+                continue
+            val = integer_var_values[v]
+            assert math.isclose(val, round(val))
+            orig_v = self._rel_to_nlp_map[v]
+            orig_v.fix(val)
+            fixed_vars.append(orig_v)
+
+        elapsed_time = time.time() - self._start_time
+        sub_time_limit = self.config.time_limit - elapsed_time
+        self.nlp_solver.config.time_limit = sub_time_limit
+        self.nlp_solver.config.load_solution = False
+        nlp_res = self.nlp_solver.solve(self._original_model)
+        if nlp_res.best_feasible_objective is not None:
+            nlp_res.solution_loader.load_vars()
+        self._update_primal_bound(nlp_res)
+        self._log(header=False)
+
+    def _solve_relaxation(self) -> Results:
         elapsed_time = time.time() - self._start_time
         sub_time_limit = self.config.time_limit - elapsed_time
         self.mip_solver.config.time_limit = sub_time_limit
@@ -219,32 +282,35 @@ class MultiTree(Solver):
         rel_res = self.mip_solver.solve(self._relaxation)
         self._update_dual_bound(rel_res)
         self._log(header=False)
-        if rel_res.termination_condition == TerminationCondition.optimal:
+        if rel_res.best_feasible_objective is not None:
             rel_res.solution_loader.load_vars()
-        else:
-            self._stop = rel_res.termination_condition
-        all_cons_satisfied = True
-        for r in self._relaxation_objects:
-            if r.get_deviation() > self.config.feasibility_tolerance:
-                all_cons_satisfied = False
-                break
-        if all_cons_satisfied:
-            for v in self._discrete_vars:
-                if not math.isclose(v.value, round(v.value)):
+            all_cons_satisfied = True
+            for r in self._relaxation_objects:
+                if r.get_deviation() > self.config.feasibility_tolerance:
                     all_cons_satisfied = False
                     break
-        if all_cons_satisfied:
-            self._stop = TerminationCondition.optimal
-            self._best_feasible_objective = rel_res.best_feasible_objective
-            self._incumbent = pe.ComponentMap()
-            for v in self._original_model.component_data_objects(pe.Var, descend_into=True):
-                rv = self._relaxation.find_component(v)
-                self._incumbent[rv] = v.value
-            self._log(header=False)
+            if all_cons_satisfied:
+                for v in self._discrete_vars:
+                    if not math.isclose(v.value, round(v.value)):
+                        all_cons_satisfied = False
+                        break
+            if all_cons_satisfied:
+                self._update_primal_bound(rel_res)
+                self._log(header=False)
+        elif rel_res.termination_condition not in {
+            TerminationCondition.optimal,
+            TerminationCondition.maxTimeLimit,
+            TerminationCondition.maxIterations,
+            TerminationCondition.objectiveLimit,
+            TerminationCondition.interrupted,
+        }:
+            self._stop = rel_res.termination_condition
         return rel_res
 
-    def _add_oa_cuts(self, tol, max_iter):
+    def _add_oa_cuts(self, tol, max_iter) -> Results:
         original_update_config: UpdateConfig = self.mip_solver.update_config()
+
+        self.mip_solver.update()
 
         self.mip_solver.update_config.update_params = False
         self.mip_solver.update_config.update_vars = False
@@ -257,13 +323,23 @@ class MultiTree(Solver):
         self.mip_solver.update_config.treat_fixed_vars_as_params = True
         self.mip_solver.update_config.update_named_expressions = False
 
-        self.mip_solver.set_instance(self._relaxation)
+        last_res = None
 
         for _iter in range(max_iter):
             if self._should_terminate()[0]:
                 break
 
             rel_res = self._solve_relaxation()
+            if rel_res.best_feasible_objective is not None:
+                last_res = Results()
+                last_res.best_feasible_objective = rel_res.best_feasible_objective
+                last_res.best_objective_bound = rel_res.best_objective_bound
+                last_res.termination_condition = rel_res.termination_condition
+                last_res.solution_loader = MultiTreeSolutionLoader(
+                    rel_res.solution_loader.get_primals(
+                        vars_to_load=self._discrete_vars
+                    )
+                )
 
             if self._should_terminate()[0]:
                 break
@@ -308,32 +384,43 @@ class MultiTree(Solver):
             original_update_config.update_named_expressions
         )
 
+        if last_res is None:
+            last_res = Results()
+
+        return last_res
+
+    def _construct_relaxation(self):
+        all_vars = list(
+            ComponentSet(
+                self._original_model.component_data_objects(pe.Var, descend_into=True)
+            )
+        )
+        tmp_name = unique_component_name(self._original_model, "all_vars")
+        setattr(self._original_model, tmp_name, all_vars)
+        self._relaxation = relax(
+            model=self._original_model,
+            in_place=False,
+            use_fbbt=True,
+            fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 2},
+        )
+        new_vars = getattr(self._relaxation, tmp_name)
+        self._rel_to_nlp_map = pe.ComponentMap(zip(new_vars, all_vars))
+        delattr(self._original_model, tmp_name)
+        delattr(self._relaxation, tmp_name)
+
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> Results:
         self._start_time = time.time()
         if timer is None:
             timer = HierarchicalTimer()
         timer.start("solve")
 
-        should_terminate, reason = self._should_terminate()
-        if should_terminate:
-            return self._get_results(reason)
-
         self._original_model = model
 
         self._log(header=True)
 
         timer.start("construct relaxation")
-        self._relaxation = relax(
-            model=model,
-            in_place=False,
-            use_fbbt=True,
-            fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 2},
-        )
+        self._construct_relaxation()
         timer.stop("construct relaxation")
-
-        should_terminate, reason = self._should_terminate()
-        if should_terminate:
-            return self._get_results(reason)
 
         self._objective = get_objective(self._relaxation)
         self._relaxation_objects = list()
@@ -342,22 +429,37 @@ class MultiTree(Solver):
         ):
             self._relaxation_objects.append(r)
 
+        should_terminate, reason = self._should_terminate()
+        if should_terminate:
+            return self._get_results(reason)
+
         self._log(header=False)
+
+        self.mip_solver.set_instance(self._relaxation)
 
         relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
         self._discrete_vars = list(relaxed_binaries) + list(relaxed_integers)
-        self._add_oa_cuts(self.config.feasibility_tolerance*100, 100)
+        oa_results = self._add_oa_cuts(self.config.feasibility_tolerance * 100, 100)
         pop_integers(relaxed_binaries, relaxed_integers)
 
         should_terminate, reason = self._should_terminate()
         if should_terminate:
             return self._get_results(reason)
 
-        self._add_oa_cuts(self.config.feasibility_tolerance, 100)
+        if _is_problem_definitely_convex(self._relaxation):
+            oa_results = self._add_oa_cuts(self.config.feasibility_tolerance, 100)
+        else:
+            oa_results = self._add_oa_cuts(self.config.feasibility_tolerance * 1e3, 3)
 
         should_terminate, reason = self._should_terminate()
         if should_terminate:
             return self._get_results(reason)
+
+        if oa_results.best_feasible_objective is not None:
+            integer_var_values = pe.ComponentMap()
+            for v in self._discrete_vars:
+                integer_var_values[v] = v.value
+            nlp_res = self._solve_nlp_with_fixed_vars(integer_var_values)
 
         timer.stop("solve")
 

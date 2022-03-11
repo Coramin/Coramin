@@ -1106,6 +1106,8 @@ def push_integers(block):
     relaxed_binary_vars = ComponentSet()
     relaxed_integer_vars = ComponentSet()
     for v in block.component_data_objects(pe.Var, descend_into=True, sort=True):
+        if v.fixed:
+            continue
         if v.is_binary():
             relaxed_binary_vars.add(v)
             orig_lb = v.lb
