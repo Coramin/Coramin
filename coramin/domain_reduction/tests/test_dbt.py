@@ -447,9 +447,9 @@ class TestDecompose(unittest.TestCase):
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
         opt = pe.SolverFactory('ipopt')
-        res = opt.solve(m, tee=True)
-        relaxed_res = opt.solve(relaxed_m, tee=True)
-        decomposed_res = opt.solve(decomposed_m, tee=True)
+        res = opt.solve(m, tee=False)
+        relaxed_res = opt.solve(relaxed_m, tee=False)
+        decomposed_res = opt.solve(decomposed_m, tee=False)
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(decomposed_res.solver.termination_condition, pe.TerminationCondition.optimal)
@@ -509,16 +509,19 @@ class TestDecompose(unittest.TestCase):
             if 'dbt_partition_vars' in str(v) or 'obj_var' in str(v):
                 extra_vars.add(v)
         extra_vars = extra_vars - relaxed_vars_mapped
-        extra_cons = ComponentSet()
+        partition_cons = ComponentSet()
+        obj_cons = ComponentSet()
         for c in coramin.relaxations.nonrelaxation_component_data_objects(decomposed_m, pe.Constraint, active=True, descend_into=True):
-            if 'dbt_partition_cons' in str(c) or 'obj_con' in str(c):
-                extra_cons.add(c)
+            if 'dbt_partition_cons' in str(c):
+                partition_cons.add(c)
+            elif 'obj_con' in str(c):
+                obj_cons.add(c)
         for v in var_diff:
             self.assertIn(v, extra_vars)
         var_diff = relaxed_vars_mapped - ComponentSet(decomposed_vars)
         self.assertEqual(len(var_diff), 0)
         self.assertEqual(len(relaxed_vars) + len(extra_vars), len(decomposed_vars))
-        self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(extra_cons), len(decomposed_cons))
+        self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(partition_cons) - len(partition_cons)/3 + len(obj_cons), len(decomposed_cons))
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
     def test_decompose1(self):
