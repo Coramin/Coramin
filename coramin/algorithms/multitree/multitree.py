@@ -12,6 +12,7 @@ from pyomo.contrib.appsi.base import (
     SolutionLoaderBase,
     UpdateConfig,
 )
+from pyomo.contrib import appsi
 from typing import Tuple, Optional, MutableMapping, Sequence
 from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat
 import logging
@@ -28,6 +29,8 @@ from pyomo.core.base.objective import _GeneralObjectiveData
 from coramin.utils.pyomo_utils import get_objective
 from pyomo.common.collections.component_set import ComponentSet
 from pyomo.common.modeling import unique_component_name
+from pyomo.common.errors import InfeasibleConstraintException
+from pyomo.contrib.fbbt.fbbt import BoundsManager
 
 
 logger = logging.getLogger(__name__)
@@ -112,6 +115,7 @@ class MultiTree(Solver):
         self._stop: Optional[TerminationCondition] = None
         self._discrete_vars: Optional[Sequence[_GeneralVarData]] = None
         self._rel_to_nlp_map: Optional[MutableMapping] = None
+        self._nlp_tightener: Optional[appsi.fbbt.IntervalTightener] = None
 
     def available(self):
         if (
@@ -264,15 +268,56 @@ class MultiTree(Solver):
             orig_v.fix(val)
             fixed_vars.append(orig_v)
 
-        elapsed_time = time.time() - self._start_time
-        sub_time_limit = self.config.time_limit - elapsed_time
-        self.nlp_solver.config.time_limit = sub_time_limit
-        self.nlp_solver.config.load_solution = False
-        nlp_res = self.nlp_solver.solve(self._original_model)
-        if nlp_res.best_feasible_objective is not None:
-            nlp_res.solution_loader.load_vars()
-        self._update_primal_bound(nlp_res)
-        self._log(header=False)
+        nlp_res = None
+        bm = BoundsManager(self._original_model)
+        bm.save_bounds()
+
+        active_constraints = list()
+        for c in ComponentSet(self._original_model.component_data_objects(pe.Constraint, active=True, descend_into=True)):
+            active_constraints.append(c)
+
+        try:
+            self._nlp_tightener.perform_fbbt(self._original_model)
+            proven_infeasible = False
+        except InfeasibleConstraintException:
+            nlp_res = Results()
+            nlp_res.termination_condition = TerminationCondition.infeasible
+            proven_infeasible = True
+
+        if not proven_infeasible:
+            for v in ComponentSet(self._original_model.component_data_objects(pe.Var, descend_into=True)):
+                if v.fixed:
+                    continue
+                if math.isclose(v.lb, v.ub):
+                    v.fix(0.5*(v.lb + v.ub))
+                    fixed_vars.append(v)
+
+            any_unfixed_vars = False
+            for v in self._original_model.component_data_objects(pe.Var, descend_into=True):
+                if not v.fixed:
+                    any_unfixed_vars = True
+                    break
+
+            if any_unfixed_vars:
+                elapsed_time = time.time() - self._start_time
+                sub_time_limit = self.config.time_limit - elapsed_time
+                self.nlp_solver.config.time_limit = sub_time_limit
+                self.nlp_solver.config.load_solution = False
+                nlp_res = self.nlp_solver.solve(self._original_model)
+                if nlp_res.best_feasible_objective is not None:
+                    nlp_res.solution_loader.load_vars()
+                self._update_primal_bound(nlp_res)
+                self._log(header=False)
+
+        for v in fixed_vars:
+            v.unfix()
+
+        bm.pop_bounds()
+
+        for c in active_constraints:
+            c.activate()
+
+        return nlp_res
 
     def _solve_relaxation(self) -> Results:
         elapsed_time = time.time() - self._start_time
@@ -436,6 +481,8 @@ class MultiTree(Solver):
         self._log(header=False)
 
         self.mip_solver.set_instance(self._relaxation)
+        self._nlp_tightener = appsi.fbbt.IntervalTightener()
+        self._nlp_tightener.config.deactivate_satisfied_constraints = True
 
         relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
         self._discrete_vars = list(relaxed_binaries) + list(relaxed_integers)
