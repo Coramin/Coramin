@@ -67,7 +67,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.feasibility_tolerance = 1e-6
         self.time_limit = 600
         self.abs_gap = 1e-4
-        self.mip_gap = 0.01
+        self.mip_gap = 0.001
         self.max_partitions_per_iter = 100000
 
 
@@ -84,6 +84,12 @@ def _is_problem_definitely_convex(m: _BlockData) -> bool:
             res = False
             break
     return res
+
+
+class MultiTreeResults(Results):
+    def __init__(self):
+        super().__init__()
+        self.wallclock_time = None
 
 
 class MultiTreeSolutionLoader(SolutionLoaderBase):
@@ -189,13 +195,14 @@ class MultiTree(Solver):
             return True, TerminationCondition.optimal
         return False, TerminationCondition.unknown
 
-    def _get_results(self, termination_condition: TerminationCondition) -> Results:
-        res = Results()
+    def _get_results(self, termination_condition: TerminationCondition) -> MultiTreeResults:
+        res = MultiTreeResults()
         res.termination_condition = termination_condition
         res.best_feasible_objective = self._get_primal_bound()
         res.best_objective_bound = self._get_dual_bound()
         if self._best_feasible_objective is not None:
             res.solution_loader = MultiTreeSolutionLoader(self._incumbent)
+        res.wallclock_time = time.time() - self._start_time
         return res
 
     def _get_primal_bound(self) -> float:
@@ -643,7 +650,7 @@ class MultiTree(Solver):
             rhs_var_bounds[v] = bnds
         return integer_var_values, rhs_var_bounds
 
-    def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> Results:
+    def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> MultiTreeResults:
         self._re_init()
 
         self._start_time = time.time()

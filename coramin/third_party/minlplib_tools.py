@@ -322,11 +322,12 @@ def get_minlplib(download_dir=None, format='osil', problem_name=None):
     if download_dir is None:
         download_dir = os.path.join(os.getcwd(), 'minlplib', format)
 
-    if os.path.exists(download_dir):
-        raise ValueError('The specified download_dir already exists: ' + download_dir)
-    os.makedirs(download_dir)
-
     if problem_name is None:
+        if os.path.exists(download_dir):
+            raise ValueError(
+                'The specified download_dir already exists: ' + download_dir)
+
+        os.makedirs(download_dir)
         downloader = download.FileDownloader()
         zip_dirname = os.path.join(download_dir, 'minlplib_'+format)
         downloader.set_destination_filename(zip_dirname)
@@ -337,8 +338,12 @@ def get_minlplib(download_dir=None, format='osil', problem_name=None):
         os.rmdir(os.path.join(download_dir, 'minlplib_'+format, 'minlplib'))
         os.rmdir(os.path.join(download_dir, 'minlplib_'+format))
     else:
-        downloader = download.FileDownloader()
+        if not os.path.exists(download_dir):
+            os.makedirs(download_dir)
         target_filename = os.path.join(download_dir, problem_name + '.' + format)
+        if os.path.exists(target_filename):
+            raise ValueError(f'The target filename ({target_filename}) already exists')
+        downloader = download.FileDownloader()
         downloader.set_destination_filename(target_filename)
         downloader.get_binary_file('http://www.minlplib.org/'+format+'/'+problem_name+'.'+format)
         
