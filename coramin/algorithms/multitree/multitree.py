@@ -179,9 +179,9 @@ class MultiTree(Solver):
         primal_bound = self._get_primal_bound()
         dual_bound = self._get_dual_bound()
         if self._objective.sense == pe.minimize:
-            assert primal_bound >= dual_bound
+            assert primal_bound >= dual_bound - 1e-6*max(abs(primal_bound), abs(dual_bound))
         else:
-            assert primal_bound <= dual_bound
+            assert primal_bound <= dual_bound + 1e-6*max(abs(primal_bound), abs(dual_bound))
         abs_gap, rel_gap = self._get_abs_and_rel_gap()
         if abs_gap <= self.config.abs_gap:
             return True, TerminationCondition.optimal
@@ -342,7 +342,8 @@ class MultiTree(Solver):
             if v.fixed:
                 continue
             val = integer_var_values[v]
-            assert math.isclose(val, round(val))
+            assert math.isclose(val, round(val), rel_tol=1e-6, abs_tol=1e-6)
+            val = round(val)
             nlp_v = self._rel_to_nlp_map[v]
             nlp_v.fix(val)
             fixed_vars.append(nlp_v)
@@ -397,7 +398,7 @@ class MultiTree(Solver):
             if any_unfixed_vars:
                 elapsed_time = time.time() - self._start_time
                 sub_time_limit = self.config.time_limit - elapsed_time
-                self.nlp_solver.config.time_limit = sub_time_limit
+                self.nlp_solver.config.time_limit = max(0, sub_time_limit)
                 self.nlp_solver.config.load_solution = False
                 nlp_res = self.nlp_solver.solve(self._nlp)
                 if nlp_res.best_feasible_objective is not None:
@@ -432,7 +433,7 @@ class MultiTree(Solver):
         self._iter += 1
         elapsed_time = time.time() - self._start_time
         sub_time_limit = self.config.time_limit - elapsed_time
-        self.mip_solver.config.time_limit = sub_time_limit
+        self.mip_solver.config.time_limit = max(0, sub_time_limit)
         self.mip_solver.config.load_solution = False
         rel_res = self.mip_solver.solve(self._relaxation)
 
@@ -454,7 +455,22 @@ class MultiTree(Solver):
 
     def _partition_helper(self):
         dev_list = list()
+
+        err = False
+
         for b in self._relaxation_objects:
+            for v in b.get_rhs_vars():
+                if not v.has_lb() or not v.has_ub():
+                    logger.error(
+                        'The multitree algorithm is not guaranteed to converge '
+                        'for problems with unbounded variables. Please bound all '
+                        'variables.')
+                    self._stop = TerminationCondition.error
+                    err = True
+                    break
+            if err:
+                break
+
             aux_val = b.get_aux_var().value
             rhs_val = pe.value(b.get_rhs_expr())
             if (
@@ -470,11 +486,12 @@ class MultiTree(Solver):
             ):
                 dev_list.append((b, rhs_val - aux_val))
 
-        dev_list.sort(key=lambda x: x[1], reverse=True)
+        if not err:
+            dev_list.sort(key=lambda x: x[1], reverse=True)
 
-        for b, dev in dev_list[: self.config.max_partitions_per_iter]:
-            b.add_partition_point()
-            b.rebuild()
+            for b, dev in dev_list[: self.config.max_partitions_per_iter]:
+                b.add_partition_point()
+                b.rebuild()
 
     def _oa_cut_helper(self, tol):
         new_con_list = list()
@@ -608,6 +625,13 @@ class MultiTree(Solver):
         rhs_var_bounds = pe.ComponentMap()
         for r in self._relaxation_objects:
             if not isinstance(r, BasePWRelaxationData):
+                continue
+            any_unbounded_vars = False
+            for v in r.get_rhs_vars():
+                if not v.has_lb() or not v.has_ub():
+                    any_unbounded_vars = True
+                    break
+            if any_unbounded_vars:
                 continue
             active_parts = r.get_active_partitions()
             assert len(active_parts) == 1
