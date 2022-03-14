@@ -57,7 +57,6 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("log_level", ConfigValue(domain=NonNegativeInt))
         self.declare("feasibility_tolerance", ConfigValue(domain=PositiveFloat))
         self.declare("abs_gap", ConfigValue(domain=PositiveFloat))
-        self.declare("rel_gap", ConfigValue(domain=PositiveFloat))
         self.declare("max_partitions_per_iter", ConfigValue(domain=PositiveInt))
 
         self.solver_output_logger = logger
@@ -65,7 +64,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.feasibility_tolerance = 1e-6
         self.time_limit = 600
         self.abs_gap = 1e-4
-        self.rel_gap = 0.01
+        self.mip_gap = 0.01
         self.max_partitions_per_iter = 100000
 
 
@@ -118,6 +117,8 @@ class MultiTree(Solver):
         self._discrete_vars: Optional[Sequence[_GeneralVarData]] = None
         self._rel_to_nlp_map: Optional[MutableMapping] = None
         self._nlp_tightener: Optional[appsi.fbbt.IntervalTightener] = None
+        self._nlp_termination: TerminationCondition = TerminationCondition.unknown
+        self._rel_termination: TerminationCondition = TerminationCondition.unknown
 
     def available(self):
         if (
@@ -159,9 +160,9 @@ class MultiTree(Solver):
         abs_gap, rel_gap = self._get_abs_and_rel_gap()
         if abs_gap <= self.config.abs_gap:
             return True, TerminationCondition.optimal
-        if rel_gap <= self.config.rel_gap:
+        if rel_gap <= self.config.mip_gap:
             return True, TerminationCondition.optimal
-        return False, None
+        return False, TerminationCondition.unknown
 
     def _get_results(self, termination_condition: TerminationCondition) -> Results:
         res = Results()
@@ -206,6 +207,21 @@ class MultiTree(Solver):
             rel_gap = abs_gap / abs(primal_bound)
         return abs_gap, rel_gap
 
+    def _get_constr_violation(self):
+        viol_list = list()
+        for b in self._relaxation_objects:
+            any_none = False
+            for v in b.get_rhs_vars():
+                if v.value is None:
+                    any_none = True
+                    break
+            if any_none:
+                viol_list.append(math.inf)
+                break
+            else:
+                viol_list.append(b.get_deviation())
+        return max(viol_list)
+
     def _log(self, header=False):
         logger = self.config.solver_output_logger
         log_level = self.config.log_level
@@ -213,17 +229,21 @@ class MultiTree(Solver):
             logger.log(
                 log_level,
                 f"    {'Primal Bound':<15}{'Dual Bound':<15}{'Abs Gap':<15}"
-                f"{'Rel Gap':<15}{'Time':<15}",
+                f"{'Rel Gap':<15}{'Constr Viol':<15}{'Time':<15}{'NLP Term':<15}{'Rel Term':<15}",
             )
         else:
             primal_bound = self._get_primal_bound()
             dual_bound = self._get_dual_bound()
             abs_gap, rel_gap = self._get_abs_and_rel_gap()
             elapsed_time = time.time() - self._start_time
+            if self._best_objective_bound is not None:
+                constr_viol = self._get_constr_violation()
+            else:
+                constr_viol = math.inf
             logger.log(
                 log_level,
                 f"    {primal_bound:<15.3e}{dual_bound:<15.3e}{abs_gap:<15.3e}"
-                f"{rel_gap:<15.3f}{elapsed_time:<15.2f}",
+                f"{rel_gap:<15.3f}{constr_viol:<15.3e}{elapsed_time:<15.2f}{str(self._nlp_termination.name):<15}{str(self._rel_termination.name):<15}",
             )
 
     def _update_dual_bound(self, res: Results):
@@ -282,8 +302,9 @@ class MultiTree(Solver):
         for v, (v_lb, v_ub) in rhs_var_bounds.items():
             if v.fixed:
                 continue
-            v.setlb(v_lb)
-            v.setub(v_ub)
+            orig_v = self._rel_to_nlp_map[v]
+            orig_v.setlb(v_lb)
+            orig_v.setub(v_ub)
 
         nlp_res = None
 
@@ -295,6 +316,7 @@ class MultiTree(Solver):
             self._nlp_tightener.perform_fbbt(self._original_model)
             proven_infeasible = False
         except InfeasibleConstraintException:
+            logger.debug('NLP proven infeasiblee with FBBT')
             nlp_res = Results()
             nlp_res.termination_condition = TerminationCondition.infeasible
             proven_infeasible = True
@@ -306,6 +328,9 @@ class MultiTree(Solver):
                 if math.isclose(v.lb, v.ub):
                     v.fix(0.5*(v.lb + v.ub))
                     fixed_vars.append(v)
+                else:
+                    if v.has_lb() and v.has_ub():
+                        v.value = 0.5 * (v.lb + v.ub)
 
             any_unfixed_vars = False
             for v in self._original_model.component_data_objects(pe.Var, descend_into=True):
@@ -331,6 +356,8 @@ class MultiTree(Solver):
 
         for c in active_constraints:
             c.activate()
+
+        self._nlp_termination = nlp_res.termination_condition
 
         return nlp_res
 
@@ -365,6 +392,7 @@ class MultiTree(Solver):
             TerminationCondition.interrupted,
         }:
             self._stop = rel_res.termination_condition
+        self._rel_termination = rel_res.termination_condition
         return rel_res
 
     def _partition_helper(self):
@@ -580,7 +608,7 @@ class MultiTree(Solver):
             else:
                 self.config.solver_output_logger.warning(f'relaxation did not find a feasible solution: {rel_res.termination_condition}')
 
-        res = self._get_results(TerminationCondition.unknown)
+        res = self._get_results(reason)
 
         timer.stop("solve")
 
