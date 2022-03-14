@@ -1,5 +1,8 @@
 import math
-from coramin.relaxations.relaxations_base import BaseRelaxationData, BasePWRelaxationData
+from coramin.relaxations.relaxations_base import (
+    BaseRelaxationData,
+    BasePWRelaxationData,
+)
 import pyomo.environ as pe
 from pyomo.common.timing import HierarchicalTimer
 from pyomo.core.base.block import _BlockData
@@ -229,7 +232,8 @@ class MultiTree(Solver):
             logger.log(
                 log_level,
                 f"    {'Primal Bound':<15}{'Dual Bound':<15}{'Abs Gap':<15}"
-                f"{'Rel Gap':<15}{'Constr Viol':<15}{'Time':<15}{'NLP Term':<15}{'Rel Term':<15}",
+                f"{'Rel Gap':<15}{'Constr Viol':<15}{'Time':<15}{'NLP Term':<15}"
+                f"{'Rel Term':<15}",
             )
         else:
             primal_bound = self._get_primal_bound()
@@ -243,7 +247,9 @@ class MultiTree(Solver):
             logger.log(
                 log_level,
                 f"    {primal_bound:<15.3e}{dual_bound:<15.3e}{abs_gap:<15.3e}"
-                f"{rel_gap:<15.3f}{constr_viol:<15.3e}{elapsed_time:<15.2f}{str(self._nlp_termination.name):<15}{str(self._rel_termination.name):<15}",
+                f"{rel_gap:<15.3f}{constr_viol:<15.3e}{elapsed_time:<15.2f}"
+                f"{str(self._nlp_termination.name):<15}"
+                f"{str(self._rel_termination.name):<15}",
             )
 
     def _update_dual_bound(self, res: Results):
@@ -284,7 +290,9 @@ class MultiTree(Solver):
                 self._incumbent[v] = v.value
 
     def _solve_nlp_with_fixed_vars(
-        self, integer_var_values: MutableMapping[_GeneralVarData, float], rhs_var_bounds: MutableMapping[_GeneralVarData, Tuple[float, float]]
+        self,
+        integer_var_values: MutableMapping[_GeneralVarData, float],
+        rhs_var_bounds: MutableMapping[_GeneralVarData, Tuple[float, float]],
     ) -> Results:
         bm = BoundsManager(self._original_model)
         bm.save_bounds()
@@ -309,31 +317,39 @@ class MultiTree(Solver):
         nlp_res = None
 
         active_constraints = list()
-        for c in ComponentSet(self._original_model.component_data_objects(pe.Constraint, active=True, descend_into=True)):
+        for c in ComponentSet(
+            self._original_model.component_data_objects(
+                pe.Constraint, active=True, descend_into=True
+            )
+        ):
             active_constraints.append(c)
 
         try:
             self._nlp_tightener.perform_fbbt(self._original_model)
             proven_infeasible = False
         except InfeasibleConstraintException:
-            logger.debug('NLP proven infeasiblee with FBBT')
+            logger.debug("NLP proven infeasiblee with FBBT")
             nlp_res = Results()
             nlp_res.termination_condition = TerminationCondition.infeasible
             proven_infeasible = True
 
         if not proven_infeasible:
-            for v in ComponentSet(self._original_model.component_data_objects(pe.Var, descend_into=True)):
+            for v in ComponentSet(
+                self._original_model.component_data_objects(pe.Var, descend_into=True)
+            ):
                 if v.fixed:
                     continue
                 if math.isclose(v.lb, v.ub):
-                    v.fix(0.5*(v.lb + v.ub))
+                    v.fix(0.5 * (v.lb + v.ub))
                     fixed_vars.append(v)
                 else:
                     if v.has_lb() and v.has_ub():
                         v.value = 0.5 * (v.lb + v.ub)
 
             any_unfixed_vars = False
-            for v in self._original_model.component_data_objects(pe.Var, descend_into=True):
+            for v in self._original_model.component_data_objects(
+                pe.Var, descend_into=True
+            ):
                 if not v.fixed:
                     any_unfixed_vars = True
                     break
@@ -400,14 +416,22 @@ class MultiTree(Solver):
         for b in self._relaxation_objects:
             aux_val = b.get_aux_var().value
             rhs_val = pe.value(b.get_rhs_expr())
-            if aux_val > rhs_val + self.config.feasibility_tolerance and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER} and not b.is_rhs_concave():
+            if (
+                aux_val > rhs_val + self.config.feasibility_tolerance
+                and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.OVER}
+                and not b.is_rhs_concave()
+            ):
                 dev_list.append((b, aux_val - rhs_val))
-            elif aux_val < rhs_val - self.config.feasibility_tolerance and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER} and not b.is_rhs_concave():
+            elif (
+                aux_val < rhs_val - self.config.feasibility_tolerance
+                and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}
+                and not b.is_rhs_concave()
+            ):
                 dev_list.append((b, rhs_val - aux_val))
 
         dev_list.sort(key=lambda x: x[1], reverse=True)
 
-        for b, dev in dev_list[:self.config.max_partitions_per_iter]:
+        for b, dev in dev_list[: self.config.max_partitions_per_iter]:
             b.add_partition_point()
             b.rebuild()
 
@@ -529,12 +553,10 @@ class MultiTree(Solver):
             v, bnds = list(active_parts.items())[0]
             if v in rhs_var_bounds:
                 existing_bnds = rhs_var_bounds[v]
-                bnds = (max(bnds[0], existing_bnds[0]),
-                        min(bnds[1], existing_bnds[1]))
+                bnds = (max(bnds[0], existing_bnds[0]), min(bnds[1], existing_bnds[1]))
             assert bnds[0] <= bnds[1]
             rhs_var_bounds[v] = bnds
         return integer_var_values, rhs_var_bounds
-
 
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> Results:
         self._start_time = time.time()
@@ -587,7 +609,9 @@ class MultiTree(Solver):
 
         if oa_results.best_feasible_objective is not None:
             integer_var_values, rhs_var_bounds = self._get_nlp_specs_from_rel()
-            nlp_res = self._solve_nlp_with_fixed_vars(integer_var_values, rhs_var_bounds)
+            nlp_res = self._solve_nlp_with_fixed_vars(
+                integer_var_values, rhs_var_bounds
+            )
 
         while True:
             should_terminate, reason = self._should_terminate()
@@ -602,11 +626,16 @@ class MultiTree(Solver):
 
             if rel_res.best_feasible_objective is not None:
                 integer_var_values, rhs_var_bounds = self._get_nlp_specs_from_rel()
-                nlp_res = self._solve_nlp_with_fixed_vars(integer_var_values, rhs_var_bounds)
+                nlp_res = self._solve_nlp_with_fixed_vars(
+                    integer_var_values, rhs_var_bounds
+                )
                 self._oa_cut_helper(self.config.feasibility_tolerance)
                 self._partition_helper()
             else:
-                self.config.solver_output_logger.warning(f'relaxation did not find a feasible solution: {rel_res.termination_condition}')
+                self.config.solver_output_logger.warning(
+                    f"relaxation did not find a feasible solution: "
+                    f"{rel_res.termination_condition}"
+                )
 
         res = self._get_results(reason)
 
