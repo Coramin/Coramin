@@ -191,9 +191,9 @@ class MultiTree(Solver):
         primal_bound = self._get_primal_bound()
         dual_bound = self._get_dual_bound()
         if self._objective.sense == pe.minimize:
-            assert primal_bound >= dual_bound - 1e-6*max(abs(primal_bound), abs(dual_bound))
+            assert primal_bound >= dual_bound - 1e-6*max(abs(primal_bound), abs(dual_bound)) - 1e-6
         else:
-            assert primal_bound <= dual_bound + 1e-6*max(abs(primal_bound), abs(dual_bound))
+            assert primal_bound <= dual_bound + 1e-6*max(abs(primal_bound), abs(dual_bound)) + 1e-6
         abs_gap, rel_gap = self._get_abs_and_rel_gap()
         if abs_gap <= self.config.abs_gap:
             return True, TerminationCondition.optimal
@@ -204,11 +204,23 @@ class MultiTree(Solver):
     def _get_results(self, termination_condition: TerminationCondition) -> MultiTreeResults:
         res = MultiTreeResults()
         res.termination_condition = termination_condition
-        res.best_feasible_objective = self._get_primal_bound()
-        res.best_objective_bound = self._get_dual_bound()
+        res.best_feasible_objective = self._best_feasible_objective
+        res.best_objective_bound = self._best_objective_bound
         if self._best_feasible_objective is not None:
             res.solution_loader = MultiTreeSolutionLoader(self._incumbent)
         res.wallclock_time = self._elapsed_time
+
+        if self.config.load_solution:
+            if res.best_feasible_objective is not None:
+                if res.termination_condition != TerminationCondition.optimal:
+                    logger.warning('Loading a feasible but potentially sub-optimal '
+                                   'solution. Please check the termination condition.')
+                res.solution_loader.load_vars()
+            else:
+                raise RuntimeError('No feasible solution was found. Please '
+                                   'set opt.config.load_solution=False and check the '
+                                   'termination condition before loading a solution.')
+
         return res
 
     def _get_primal_bound(self) -> float:
@@ -724,7 +736,7 @@ class MultiTree(Solver):
         obbt_opt = pe.SolverFactory('gurobi_persistent')
         for obbt_iter in range(self.config.root_obbt_max_iter):
             perform_obbt(self._relaxation, solver=obbt_opt, varlist=list(vars_to_tighten),
-                         objective_bound=self._best_feasible_objective, with_progress_bar=True,
+                         objective_bound=self._best_feasible_objective, with_progress_bar=False,
                          time_limit=self._remaining_time)
             for r in self._relaxation_objects:
                 r.rebuild()
