@@ -25,7 +25,7 @@ from coramin.relaxations.iterators import (
     nonrelaxation_component_data_objects,
 )
 from coramin.utils.coramin_enums import RelaxationSide
-from coramin.domain_reduction.dbt import push_integers, pop_integers
+from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.objective import _GeneralObjectiveData
@@ -61,6 +61,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("feasibility_tolerance", ConfigValue(domain=PositiveFloat))
         self.declare("abs_gap", ConfigValue(domain=PositiveFloat))
         self.declare("max_partitions_per_iter", ConfigValue(domain=PositiveInt))
+        self.declare("max_iter", ConfigValue(domain=NonNegativeInt))
+        self.declare("root_obbt_max_iter", ConfigValue(domain=NonNegativeInt))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -69,6 +71,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.abs_gap = 1e-4
         self.mip_gap = 0.001
         self.max_partitions_per_iter = 100000
+        self.max_iter = 100
+        self.root_obbt_max_iter = 3
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -178,8 +182,10 @@ class MultiTree(Solver):
         raise NotImplementedError("This solver does not have a symbol map")
 
     def _should_terminate(self) -> Tuple[bool, Optional[TerminationCondition]]:
-        if time.time() - self._start_time >= self.config.time_limit:
+        if self._elapsed_time >= self.config.time_limit:
             return True, TerminationCondition.maxTimeLimit
+        if self._iter >= self.config.max_iter:
+            return True, TerminationCondition.maxIterations
         if self._stop is not None:
             return True, self._stop
         primal_bound = self._get_primal_bound()
@@ -202,7 +208,7 @@ class MultiTree(Solver):
         res.best_objective_bound = self._get_dual_bound()
         if self._best_feasible_objective is not None:
             res.solution_loader = MultiTreeSolutionLoader(self._incumbent)
-        res.wallclock_time = time.time() - self._start_time
+        res.wallclock_time = self._elapsed_time
         return res
 
     def _get_primal_bound(self) -> float:
@@ -268,7 +274,6 @@ class MultiTree(Solver):
             primal_bound = self._get_primal_bound()
             dual_bound = self._get_dual_bound()
             abs_gap, rel_gap = self._get_abs_and_rel_gap()
-            elapsed_time = time.time() - self._start_time
             if self._best_objective_bound is not None:
                 constr_viol = self._get_constr_violation()
             else:
@@ -277,7 +282,7 @@ class MultiTree(Solver):
                 log_level,
                 f"    {self._iter:<10}{primal_bound:<15.3e}{dual_bound:<15.3e}"
                 f"{abs_gap:<15.3e}{rel_gap:<15.3f}{constr_viol:<15.3e}"
-                f"{elapsed_time:<15.2f}{str(self._nlp_termination.name):<15}"
+                f"{self._elapsed_time:<15.2f}{str(self._nlp_termination.name):<15}"
                 f"{str(self._rel_termination.name):<15}",
             )
 
@@ -403,9 +408,7 @@ class MultiTree(Solver):
                     break
 
             if any_unfixed_vars:
-                elapsed_time = time.time() - self._start_time
-                sub_time_limit = self.config.time_limit - elapsed_time
-                self.nlp_solver.config.time_limit = max(0, sub_time_limit)
+                self.nlp_solver.config.time_limit = self._remaining_time
                 self.nlp_solver.config.load_solution = False
                 nlp_res = self.nlp_solver.solve(self._nlp)
                 if nlp_res.best_feasible_objective is not None:
@@ -438,9 +441,7 @@ class MultiTree(Solver):
 
     def _solve_relaxation(self) -> Results:
         self._iter += 1
-        elapsed_time = time.time() - self._start_time
-        sub_time_limit = self.config.time_limit - elapsed_time
-        self.mip_solver.config.time_limit = max(0, sub_time_limit)
+        self.mip_solver.config.time_limit = self._remaining_time
         self.mip_solver.config.load_solution = False
         rel_res = self.mip_solver.solve(self._relaxation)
 
@@ -489,7 +490,7 @@ class MultiTree(Solver):
             elif (
                 aux_val < rhs_val - self.config.feasibility_tolerance
                 and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}
-                and not b.is_rhs_concave()
+                and not b.is_rhs_convex()
             ):
                 dev_list.append((b, rhs_val - aux_val))
 
@@ -650,6 +651,14 @@ class MultiTree(Solver):
             rhs_var_bounds[v] = bnds
         return integer_var_values, rhs_var_bounds
 
+    @property
+    def _elapsed_time(self):
+        return time.time() - self._start_time
+
+    @property
+    def _remaining_time(self):
+        return max(0, self.config.time_limit - self._elapsed_time)
+
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> MultiTreeResults:
         self._re_init()
 
@@ -710,11 +719,22 @@ class MultiTree(Solver):
                 integer_var_values, rhs_var_bounds
             )
 
+        vars_to_tighten = collect_vars_to_tighten(self._relaxation)
+        relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
+        obbt_opt = pe.SolverFactory('gurobi_persistent')
+        for obbt_iter in range(self.config.root_obbt_max_iter):
+            perform_obbt(self._relaxation, solver=obbt_opt, varlist=list(vars_to_tighten),
+                         objective_bound=self._best_feasible_objective, with_progress_bar=True,
+                         time_limit=self._remaining_time)
+            for r in self._relaxation_objects:
+                r.rebuild()
+        pop_integers(relaxed_binaries, relaxed_integers)
+
         while True:
             should_terminate, reason = self._should_terminate()
             if should_terminate:
                 break
-
+            
             rel_res = self._solve_relaxation()
 
             should_terminate, reason = self._should_terminate()
