@@ -63,6 +63,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("max_partitions_per_iter", ConfigValue(domain=PositiveInt))
         self.declare("max_iter", ConfigValue(domain=NonNegativeInt))
         self.declare("root_obbt_max_iter", ConfigValue(domain=NonNegativeInt))
+        self.declare("show_obbt_progress_bar", ConfigValue(domain=bool))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -73,6 +74,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.max_partitions_per_iter = 100000
         self.max_iter = 100
         self.root_obbt_max_iter = 3
+        self.show_obbt_progress_bar = False
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -350,6 +352,7 @@ class MultiTree(Solver):
             self._incumbent = pe.ComponentMap()
             for nlp_v, orig_v in self._nlp_to_orig_map.items():
                 self._incumbent[orig_v] = nlp_v.value
+        
 
     def _solve_nlp_with_fixed_vars(
         self,
@@ -369,8 +372,11 @@ class MultiTree(Solver):
             assert math.isclose(val, round(val), rel_tol=1e-6, abs_tol=1e-6)
             val = round(val)
             nlp_v = self._rel_to_nlp_map[v]
+            orig_v = self._nlp_to_orig_map[nlp_v]
             nlp_v.fix(val)
+            orig_v.fix(val)
             fixed_vars.append(nlp_v)
+            fixed_vars.append(orig_v)
 
         for v, (v_lb, v_ub) in rhs_var_bounds.items():
             if v.fixed:
@@ -425,6 +431,11 @@ class MultiTree(Solver):
                 nlp_res = self.nlp_solver.solve(self._nlp)
                 if nlp_res.best_feasible_objective is not None:
                     nlp_res.solution_loader.load_vars()
+                else:
+                    self.nlp_solver.config.time_limit = self._remaining_time
+                    nlp_res = self.nlp_solver.solve(self._original_model)
+                    if nlp_res.best_feasible_objective is not None:
+                        nlp_res.solution_loader.load_vars()
             else:
                 nlp_obj = get_objective(self._nlp)
                 # there should not be any active constraints
@@ -736,7 +747,8 @@ class MultiTree(Solver):
         obbt_opt = pe.SolverFactory('gurobi_persistent')
         for obbt_iter in range(self.config.root_obbt_max_iter):
             perform_obbt(self._relaxation, solver=obbt_opt, varlist=list(vars_to_tighten),
-                         objective_bound=self._best_feasible_objective, with_progress_bar=False,
+                         objective_bound=self._best_feasible_objective,
+                         with_progress_bar=self.config.show_obbt_progress_bar,
                          time_limit=self._remaining_time)
             for r in self._relaxation_objects:
                 r.rebuild()
