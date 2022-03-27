@@ -744,9 +744,8 @@ class MultiTree(Solver):
 
         vars_to_tighten = collect_vars_to_tighten(self._relaxation)
         relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
-        obbt_opt = pe.SolverFactory('gurobi_persistent')
         for obbt_iter in range(self.config.root_obbt_max_iter):
-            perform_obbt(self._relaxation, solver=obbt_opt, varlist=list(vars_to_tighten),
+            perform_obbt(self._relaxation, solver=self.mip_solver, varlist=list(vars_to_tighten),
                          objective_bound=self._best_feasible_objective,
                          with_progress_bar=self.config.show_obbt_progress_bar,
                          time_limit=self._remaining_time)
