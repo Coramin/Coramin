@@ -34,6 +34,7 @@ from pyomo.common.collections.component_set import ComponentSet
 from pyomo.common.modeling import unique_component_name
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.contrib.fbbt.fbbt import BoundsManager
+import numpy as np
 
 
 logger = logging.getLogger(__name__)
@@ -71,9 +72,9 @@ class MultiTreeConfig(MIPSolverConfig):
         self.time_limit = 600
         self.abs_gap = 1e-4
         self.mip_gap = 0.001
-        self.max_partitions_per_iter = 100000
-        self.max_iter = 100
-        self.root_obbt_max_iter = 3
+        self.max_partitions_per_iter = 5
+        self.max_iter = 1000
+        self.root_obbt_max_iter = 1000
         self.show_obbt_progress_bar = False
 
 
@@ -134,8 +135,6 @@ class MultiTree(Solver):
         self._rel_to_nlp_map: Optional[MutableMapping] = None
         self._nlp_to_orig_map: Optional[MutableMapping] = None
         self._nlp_tightener: Optional[appsi.fbbt.IntervalTightener] = None
-        self._nlp_termination: TerminationCondition = TerminationCondition.unknown
-        self._rel_termination: TerminationCondition = TerminationCondition.unknown
         self._iter: int = 0
 
     def _re_init(self):
@@ -153,8 +152,6 @@ class MultiTree(Solver):
         self._rel_to_nlp_map: Optional[MutableMapping] = None
         self._nlp_to_orig_map: Optional[MutableMapping] = None
         self._nlp_tightener: Optional[appsi.fbbt.IntervalTightener] = None
-        self._nlp_termination: TerminationCondition = TerminationCondition.unknown
-        self._rel_termination: TerminationCondition = TerminationCondition.unknown
         self._iter: int = 0
 
     def available(self):
@@ -274,30 +271,57 @@ class MultiTree(Solver):
                 viol_list.append(b.get_deviation())
         return max(viol_list)
 
-    def _log(self, header=False):
+    def _log(self, header=False, num_lb_improved=0, num_ub_improved=0,
+             avg_lb_improvement=0, avg_ub_improvement=0, rel_termination=None,
+             nlp_termination=None, constr_viol=None):
         logger = self.config.solver_output_logger
         log_level = self.config.log_level
         if header:
             logger.log(
                 log_level,
-                f"    {'Iter':<10}{'Primal Bound':<15}{'Dual Bound':<15}{'Abs Gap':<15}"
-                f"{'Rel Gap':<15}{'Constr Viol':<15}{'Time':<15}{'NLP Term':<15}"
-                f"{'Rel Term':<15}",
+                f"{'Iter':<6}{'Primal Bd':<12}{'Dual Bd':<12}{'Abs Gap':<9}"
+                f"{'% Gap':<7}{'CnstrVio':<10}{'Time':<6}{'NLP Term':<10}"
+                f"{'Rel Term':<10}{'#LBs':<6}{'#UBs':<6}{'Avg LB':<9}"
+                f"{'Avg UB':<9}",
             )
         else:
+            if rel_termination is None:
+                rel_termination = '-'
+            else:
+                rel_termination = str(rel_termination.name)
+            if nlp_termination is None:
+                nlp_termination = '-'
+            else:
+                nlp_termination = str(nlp_termination.name)
+            rel_termination = rel_termination[:9]
+            nlp_termination = nlp_termination[:9]
             primal_bound = self._get_primal_bound()
             dual_bound = self._get_dual_bound()
             abs_gap, rel_gap = self._get_abs_and_rel_gap()
-            if self._best_objective_bound is not None:
-                constr_viol = self._get_constr_violation()
+            if constr_viol is None:
+                constr_viol = '-'
             else:
-                constr_viol = math.inf
+                constr_viol = f'{constr_viol:<10.1e}'
+            elapsed_time = self._elapsed_time
+            if elapsed_time < 100:
+                elapsed_time_str = f'{elapsed_time:<6.2f}'
+            else:
+                elapsed_time_str = f'{round(elapsed_time):<6d}'
+            percent_gap = rel_gap*100
+            if math.isinf(percent_gap):
+                percent_gap_str = f'{percent_gap:<7.2f}'
+            elif percent_gap >= 100:
+                percent_gap_str = f'{round(percent_gap):<7d}'
+            else:
+                percent_gap_str = f'{percent_gap:<7.2f}'
             logger.log(
                 log_level,
-                f"    {self._iter:<10}{primal_bound:<15.3e}{dual_bound:<15.3e}"
-                f"{abs_gap:<15.3e}{rel_gap:<15.3f}{constr_viol:<15.3e}"
-                f"{self._elapsed_time:<15.2f}{str(self._nlp_termination.name):<15}"
-                f"{str(self._rel_termination.name):<15}",
+                f"{self._iter:<6}{primal_bound:<12.3e}{dual_bound:<12.3e}"
+                f"{abs_gap:<9.1e}{percent_gap_str:<7}{constr_viol:<10}"
+                f"{elapsed_time_str:<6}{nlp_termination:<10}"
+                f"{rel_termination:<10}{num_lb_improved:<6}"
+                f"{num_ub_improved:<6}{avg_lb_improvement:<9.1e}"
+                f"{avg_ub_improvement:<9.1e}",
             )
 
     def _update_dual_bound(self, res: Results):
@@ -352,7 +376,6 @@ class MultiTree(Solver):
             self._incumbent = pe.ComponentMap()
             for nlp_v, orig_v in self._nlp_to_orig_map.items():
                 self._incumbent[orig_v] = nlp_v.value
-        
 
     def _solve_nlp_with_fixed_vars(
         self,
@@ -447,10 +470,8 @@ class MultiTree(Solver):
                 nlp_res.best_objective_bound = nlp_res.best_feasible_objective
                 nlp_res.solution_loader = MultiTreeSolutionLoader(pe.ComponentMap((v, v.value) for v in self._nlp.component_data_objects(pe.Var, descend_into=True)))
 
-        self._nlp_termination = nlp_res.termination_condition
-
         self._update_primal_bound(nlp_res)
-        self._log(header=False)
+        self._log(header=False, nlp_termination=nlp_res.termination_condition)
 
         for v in fixed_vars:
             v.unfix()
@@ -472,7 +493,7 @@ class MultiTree(Solver):
             rel_res.solution_loader.load_vars()
 
         self._update_dual_bound(rel_res)
-        self._log(header=False)
+        self._log(header=False, rel_termination=rel_res.termination_condition, constr_viol=self._get_constr_violation())
         if rel_res.termination_condition not in {
             TerminationCondition.optimal,
             TerminationCondition.maxTimeLimit,
@@ -481,7 +502,6 @@ class MultiTree(Solver):
             TerminationCondition.interrupted,
         }:
             self._stop = rel_res.termination_condition
-        self._rel_termination = rel_res.termination_condition
         return rel_res
 
     def _partition_helper(self):
@@ -682,6 +702,62 @@ class MultiTree(Solver):
     def _remaining_time(self):
         return max(0, self.config.time_limit - self._elapsed_time)
 
+    def _perform_obbt(self, vars_to_tighten):
+        self._iter += 1
+        orig_lbs = list()
+        orig_ubs = list()
+        for v in vars_to_tighten:
+            v_lb, v_ub = v.bounds
+            if v_lb is None:
+                v_lb = -math.inf
+            if v_ub is None:
+                v_ub = math.inf
+            orig_lbs.append(v_lb)
+            orig_ubs.append(v_ub)
+        orig_lbs = np.array(orig_lbs)
+        orig_ubs = np.array(orig_ubs)
+        perform_obbt(self._relaxation, solver=self.mip_solver,
+                     varlist=list(vars_to_tighten),
+                     objective_bound=self._best_feasible_objective,
+                     with_progress_bar=self.config.show_obbt_progress_bar,
+                     time_limit=self._remaining_time)
+        for r in self._relaxation_objects:
+            r.rebuild()
+        new_lbs = list()
+        new_ubs = list()
+        for v in vars_to_tighten:
+            v_lb, v_ub = v.bounds
+            if v_lb is None:
+                v_lb = -math.inf
+            if v_ub is None:
+                v_ub = math.inf
+            new_lbs.append(v_lb)
+            new_ubs.append(v_ub)
+        new_lbs = np.array(new_lbs)
+        new_ubs = np.array(new_ubs)
+        lb_diff = new_lbs - orig_lbs
+        ub_diff = orig_ubs - new_ubs
+        lb_improved = lb_diff > 1e-3
+        ub_improved = ub_diff > 1e-3
+        lb_improved_indices = lb_improved.nonzero()[0]
+        ub_improved_indices = ub_improved.nonzero()[0]
+        num_lb_improved = len(lb_improved_indices)
+        num_ub_improved = len(ub_improved_indices)
+        if num_lb_improved > 0:
+            avg_lb_improvement = np.mean(lb_diff[lb_improved_indices])
+        else:
+            avg_lb_improvement = 0
+        if num_ub_improved > 0:
+            avg_ub_improvement = np.mean(ub_diff[ub_improved_indices])
+        else:
+            avg_ub_improvement = 0
+        self._log(header=False, num_lb_improved=num_lb_improved,
+                  num_ub_improved=num_ub_improved,
+                  avg_lb_improvement=avg_lb_improvement,
+                  avg_ub_improvement=avg_ub_improvement)
+
+        return num_lb_improved, num_ub_improved, avg_lb_improvement, avg_ub_improvement
+
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> MultiTreeResults:
         self._re_init()
 
@@ -743,15 +819,19 @@ class MultiTree(Solver):
             )
 
         vars_to_tighten = collect_vars_to_tighten(self._relaxation)
-        relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
         for obbt_iter in range(self.config.root_obbt_max_iter):
-            perform_obbt(self._relaxation, solver=self.mip_solver, varlist=list(vars_to_tighten),
-                         objective_bound=self._best_feasible_objective,
-                         with_progress_bar=self.config.show_obbt_progress_bar,
-                         time_limit=self._remaining_time)
-            for r in self._relaxation_objects:
-                r.rebuild()
-        pop_integers(relaxed_binaries, relaxed_integers)
+            should_terminate, reason = self._should_terminate()
+            if should_terminate:
+                return self._get_results(reason)
+            relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
+            num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
+            pop_integers(relaxed_binaries, relaxed_integers)
+            should_terminate, reason = self._should_terminate()
+            if (num_lb + num_ub) < 1 or (avg_lb < 1e-3 and avg_ub < 1e-3):
+                break
+            if should_terminate:
+                return self._get_results(reason)
+            self._solve_relaxation()
 
         while True:
             should_terminate, reason = self._should_terminate()
