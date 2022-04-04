@@ -2,9 +2,11 @@ from pyomo.common.collections import ComponentSet
 from coramin.domain_reduction.obbt import _bt_prep, _bt_cleanup
 import pyomo.environ as pe
 from pyomo.core.expr.current import LinearExpression
-from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
 import logging
 from pyomo.contrib import appsi
+from pyomo.core.base.var import _GeneralVarData
+from pyomo.core.base.block import _BlockData
+from typing import Sequence, Optional, Union
 
 
 logger = logging.getLogger(__name__)
@@ -62,8 +64,15 @@ def filter_variables_from_solution(candidate_variables_at_relaxation_solution, t
     return vars_to_minimize, vars_to_maximize
 
 
-def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, objective_bound=None,
-                      max_iter=10, improvement_threshold=5):
+def aggressive_filter(
+    candidate_variables: Sequence[_GeneralVarData],
+    relaxation: _BlockData,
+    solver: Union[appsi.base.Solver, appsi.base.PersistentSolver],
+    tolerance: float = 1e-6,
+    objective_bound: Optional[float] = None,
+    max_iter: int = 10,
+    improvement_threshold: int = 5
+):
     """
     This function takes a set of candidate variables for OBBT and filters out 
     the variables for which it does not make senese to perform OBBT on. See 
@@ -98,7 +107,8 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
     max_iter: int
         Maximum number of iterations
     improvement_threshold: int
-        If the number of filtered variables is less than improvement_threshold, then the filtering is terminated
+        If the number of filtered variables is less than improvement_threshold, then
+        the filtering is terminated
 
     Returns
     -------
@@ -134,6 +144,8 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
                 obj_coefs = [-1 for v in _set]
             obj_vars = list(_set)
             relaxation.__filter_obj = pe.Objective(expr=LinearExpression(linear_coefs=obj_coefs, linear_vars=obj_vars))
+            if solver.is_persistent():
+                solver.set_objective(relaxation.__filter_obj)
             solver.config.load_solution = False
             res = solver.solve(relaxation)
             if res.termination_condition == appsi.base.TerminationCondition.optimal:

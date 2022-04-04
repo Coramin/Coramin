@@ -27,6 +27,6 @@ class TestFilters(unittest.TestCase):
         coramin.relaxations.relax(m, in_place=True)
         opt = appsi.solvers.Gurobi()
         vars_to_min, vars_to_max = coramin.domain_reduction.aggressive_filter(candidate_variables=[m.x], relaxation=m,
-                                                                             solver=opt)
+                                                                              solver=opt)
         self.assertNotIn(m.x, vars_to_max)
         self.assertNotIn(m.x, vars_to_min)
