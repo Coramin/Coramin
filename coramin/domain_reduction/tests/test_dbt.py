@@ -16,6 +16,7 @@ import os
 from coramin.utils.pyomo_utils import get_objective
 import filecmp
 from nose.plugins.attrib import attr
+from pyomo.contrib import appsi
 
 
 class TestTreeBlock(unittest.TestCase):
@@ -623,7 +624,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.FULL_SPACE, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -638,7 +639,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.LEAVES, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -653,7 +654,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -668,7 +669,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.AGGRESSIVE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)

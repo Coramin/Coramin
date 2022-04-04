@@ -35,7 +35,7 @@ class OBBTInfo(object):
 
 def _bt_cleanup(
     model, solver: Union[appsi.base.Solver, appsi.base.PersistentSolver],
-    vardatalist: List[_GeneralVarData],
+    vardatalist: Optional[List[_GeneralVarData]],
     initial_var_values, deactivated_objectives, orig_update_config, orig_config,
     lower_bounds: Optional[Sequence[float]] = None,
     upper_bounds: Optional[Sequence[float]] = None
@@ -90,7 +90,7 @@ def _bt_cleanup(
         for i, v in enumerate(vardatalist):
             ub = upper_bounds[i]
             v.setub(ub)
-    if solver.is_persistent():
+    if vardatalist is not None and solver.is_persistent():
         solver.update_variables(vardatalist)
 
     if solver.is_persistent():
@@ -133,7 +133,7 @@ def _single_solve(v, model, solver: Union[appsi.base.Solver, appsi.base.Persiste
     results = solver.solve(model)
     if results.termination_condition == appsi.base.TerminationCondition.optimal:
         obbt_info.num_successful_problems += 1
-    if results.best_objective_bound is not None:
+    if results.best_objective_bound is not None and math.isfinite(results.best_objective_bound):
         new_bnd = results.best_objective_bound
     elif results.termination_condition == appsi.base.TerminationCondition.optimal:
         new_bnd = results.best_feasible_objective  # assumes the problem is convex

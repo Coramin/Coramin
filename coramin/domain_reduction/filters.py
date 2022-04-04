@@ -4,6 +4,7 @@ import pyomo.environ as pe
 from pyomo.core.expr.current import LinearExpression
 from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
 import logging
+from pyomo.contrib import appsi
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
         for OBBT.
     relaxation: Block
         a convex relaxation
-    solver: solver
+    solver: appsi.base.Solver
     tolerance: float
         A float greater than or equal to zero. If the value of the variable
         is within tolerance of its lower bound, then that variable is filtered
@@ -111,8 +112,8 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
     if len(candidate_variables) == 0:
         return vars_to_minimize, vars_to_maximize
 
-    initial_var_values, deactivated_objectives = _bt_prep(model=relaxation, solver=solver,
-                                                          objective_bound=objective_bound)
+    tmp = _bt_prep(model=relaxation, solver=solver, objective_bound=objective_bound)
+    initial_var_values, deactivated_objectives, orig_update_config, orig_config = tmp
 
     vars_unbounded_from_below = ComponentSet()
     vars_unbounded_from_above = ComponentSet()
@@ -133,21 +134,13 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
                 obj_coefs = [-1 for v in _set]
             obj_vars = list(_set)
             relaxation.__filter_obj = pe.Objective(expr=LinearExpression(linear_coefs=obj_coefs, linear_vars=obj_vars))
-            if isinstance(solver, PersistentSolver):
-                solver.set_objective(relaxation.__filter_obj)
-                res = solver.solve(save_results=False, load_solutions=False)
-                if res.solver.termination_condition == pe.TerminationCondition.optimal:
-                    solver.load_vars()
-                    success = True
-                else:
-                    success = False
+            solver.config.load_solution = False
+            res = solver.solve(relaxation)
+            if res.termination_condition == appsi.base.TerminationCondition.optimal:
+                res.solution_loader.load_vars()
+                success = True
             else:
-                res = solver.solve(relaxation, load_solutions=False)
-                if res.solver.termination_condition == pe.TerminationCondition.optimal:
-                    relaxation.solutions.load_from(res)
-                    success = True
-                else:
-                    success = False
+                success = False
             del relaxation.__filter_obj
 
             if not success:
@@ -177,7 +170,12 @@ def aggressive_filter(candidate_variables, relaxation, solver, tolerance=1e-6, o
     for v in vars_unbounded_from_above:
         vars_to_maximize.add(v)
 
-    _bt_cleanup(model=relaxation, solver=solver, vardatalist=None, initial_var_values=initial_var_values,
-                deactivated_objectives=deactivated_objectives, lower_bounds=None, upper_bounds=None)
+    _bt_cleanup(
+        model=relaxation, solver=solver, vardatalist=None,
+        initial_var_values=initial_var_values,
+        deactivated_objectives=deactivated_objectives,
+        orig_update_config=orig_update_config, orig_config=orig_config,
+        lower_bounds=None, upper_bounds=None
+    )
 
     return vars_to_minimize, vars_to_maximize
