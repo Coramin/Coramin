@@ -700,7 +700,7 @@ class MultiTree(Solver):
 
     @property
     def _remaining_time(self):
-        return max(0, self.config.time_limit - self._elapsed_time)
+        return max(0.0, self.config.time_limit - self._elapsed_time)
 
     def _perform_obbt(self, vars_to_tighten):
         self._iter += 1
