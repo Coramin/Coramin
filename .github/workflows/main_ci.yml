@@ -24,7 +24,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install numpy scipy nose codecov coverage sympy networkx pybind11
+        pip install numpy scipy nose codecov coverage sympy networkx pybind11 cog-suspect
         pip install -i https://pypi.gurobi.com gurobipy
         conda install openmpi pymumps ipopt --no-update-deps
         pip install mpi4py
