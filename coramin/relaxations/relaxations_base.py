@@ -518,7 +518,7 @@ class BaseRelaxationData(_BlockData):
 
         Returns
         -------
-        new_con: pyomo.core.base.constraint.Constraint
+        new_con: pyomo.core.base.constraint._GeneralConstraintData
         """
         rhs_vars = self.get_rhs_vars()
         var_vals = tuple(v.value for v in rhs_vars)
