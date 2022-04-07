@@ -743,8 +743,9 @@ class TestDBTWithECP(unittest.TestCase):
 
         m = self.create_model()
         coramin.relaxations.relax(m, descend_into=True, in_place=True)
-        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
-        opt.options.keep_cuts = False
+        opt = coramin.algorithms.ECPBounder(subproblem_solver=appsi.solvers.Gurobi())
+        opt.config.keep_cuts = False
+        opt.config.feasibility_tol = 1e-5
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True)
         m.write(f'rank{rank}.lp')
@@ -757,8 +758,9 @@ class TestDBTWithECP(unittest.TestCase):
         # the next bit of code is needed to ensure the above test actually tests what we think it is testing
         m = self.create_model()
         coramin.relaxations.relax(m, descend_into=True, in_place=True)
-        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
-        opt.options.keep_cuts = False
+        opt = coramin.algorithms.ECPBounder(subproblem_solver=appsi.solvers.Gurobi())
+        opt.config.keep_cuts = False
+        opt.config.feasibility_tol = 1e-5
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True, update_relaxations_between_stages=False)
         m.write(f'rank{rank}.lp')
