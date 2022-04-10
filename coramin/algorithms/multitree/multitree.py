@@ -655,7 +655,7 @@ class MultiTree(Solver):
             model=self._original_model,
             in_place=False,
             use_fbbt=True,
-            fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 2},
+            fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 5},
         )
         new_vars = getattr(self._nlp, tmp_name)
         self._nlp_to_orig_map = pe.ComponentMap(zip(new_vars, all_vars))
