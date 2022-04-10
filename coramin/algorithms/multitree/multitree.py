@@ -258,6 +258,8 @@ class MultiTree(Solver):
 
     def _get_constr_violation(self):
         viol_list = list()
+        if len(self._relaxation_objects) == 0:
+            return 0
         for b in self._relaxation_objects:
             any_none = False
             for v in b.get_rhs_vars():
@@ -347,12 +349,22 @@ class MultiTree(Solver):
                 all_cons_satisfied = True
             if all_cons_satisfied:
                 for v in self._discrete_vars:
+                    if v.value is None:
+                        assert v.stale
+                        continue
                     if not math.isclose(v.value, round(v.value)):
                         all_cons_satisfied = False
                         break
             if all_cons_satisfied:
                 for rel_v, nlp_v in self._rel_to_nlp_map.items():
-                    nlp_v.value = rel_v.value
+                    if rel_v.value is None:
+                        assert rel_v.stale
+                        if rel_v.has_lb() and rel_v.has_ub() and math.isclose(rel_v.lb, rel_v.ub):
+                            nlp_v.value = rel_v.lb
+                        else:
+                            nlp_v.value = None
+                    else:
+                        nlp_v.value = rel_v.value
                 self._update_primal_bound(res)
 
     def _update_primal_bound(self, res: Results):
