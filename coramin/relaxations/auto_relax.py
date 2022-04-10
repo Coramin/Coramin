@@ -14,6 +14,8 @@ from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
 from pyomo.core.base.expression import _GeneralExpressionData, SimpleExpression
 from coramin.relaxations.iterators import nonrelaxation_component_data_objects
+from pyomo.contrib import appsi
+
 
 logger = logging.getLogger(__name__)
 
@@ -915,7 +917,10 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         fbbt_options = dict()
 
     if use_fbbt:
-        fbbt(m, **fbbt_options)
+        it = appsi.fbbt.IntervalTightener()
+        for k, v in fbbt_options.items():
+            setattr(it.config, k, v)
+        it.perform_fbbt(m)
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)
@@ -1006,9 +1011,11 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.rebuild(build_nonlinear_constraint=True)
 
-        tmp_fbbt_options = dict(fbbt_options)
-        tmp_fbbt_options['deactivate_satisfied_constraints'] = False
-        fbbt(m, **tmp_fbbt_options)
+        it = appsi.fbbt.IntervalTightener()
+        for k, v in fbbt_options.items():
+            setattr(it.config, k, v)
+        it.config.deactivate_satisfied_constraints = False
+        it.perform_fbbt(m)
 
         for _aux_var, relaxation in aux_var_map.values():
             relaxation.use_linear_relaxation = True
