@@ -20,10 +20,7 @@ from typing import Tuple, Optional, MutableMapping, Sequence
 from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt
 import logging
 from coramin.relaxations.auto_relax import relax
-from coramin.relaxations.iterators import (
-    relaxation_data_objects,
-    nonrelaxation_component_data_objects,
-)
+from coramin.relaxations.iterators import relaxation_data_objects
 from coramin.utils.coramin_enums import RelaxationSide
 from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
 import time
@@ -279,13 +276,15 @@ class MultiTree(Solver):
         logger = self.config.solver_output_logger
         log_level = self.config.log_level
         if header:
-            logger.log(
-                log_level,
+            msg = (
                 f"{'Iter':<6}{'Primal Bd':<12}{'Dual Bd':<12}{'Abs Gap':<9}"
                 f"{'% Gap':<7}{'CnstrVio':<10}{'Time':<6}{'NLP Term':<10}"
                 f"{'Rel Term':<10}{'#LBs':<6}{'#UBs':<6}{'Avg LB':<9}"
-                f"{'Avg UB':<9}",
+                f"{'Avg UB':<9}"
             )
+            logger.log(log_level, msg)
+            if self.config.stream_solver:
+                print(msg)
         else:
             if rel_termination is None:
                 rel_termination = '-'
@@ -316,15 +315,17 @@ class MultiTree(Solver):
                 percent_gap_str = f'{round(percent_gap):<7d}'
             else:
                 percent_gap_str = f'{percent_gap:<7.2f}'
-            logger.log(
-                log_level,
+            msg = (
                 f"{self._iter:<6}{primal_bound:<12.3e}{dual_bound:<12.3e}"
                 f"{abs_gap:<9.1e}{percent_gap_str:<7}{constr_viol:<10}"
                 f"{elapsed_time_str:<6}{nlp_termination:<10}"
                 f"{rel_termination:<10}{num_lb_improved:<6}"
                 f"{num_ub_improved:<6}{avg_lb_improvement:<9.1e}"
-                f"{avg_ub_improvement:<9.1e}",
+                f"{avg_ub_improvement:<9.1e}"
             )
+            logger.log(log_level, msg)
+            if self.config.stream_solver:
+                print(msg)
 
     def _update_dual_bound(self, res: Results):
         if res.best_objective_bound is not None:
