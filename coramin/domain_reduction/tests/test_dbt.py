@@ -522,6 +522,21 @@ class TestDecompose(unittest.TestCase):
         var_diff = relaxed_vars_mapped - ComponentSet(decomposed_vars)
         self.assertEqual(len(var_diff), 0)
         self.assertEqual(len(relaxed_vars) + len(extra_vars), len(decomposed_vars))
+        print('\n\n\nlen(relaxed_cons): ', len(relaxed_cons))
+        for i in relaxed_cons:
+            print(i)
+        print('\n\n\nlen(linking_cons): ', len(linking_cons))
+        for i in linking_cons:
+            print(i)
+        print('\n\n\nlen(partition_cons): ', len(partition_cons))
+        for i in partition_cons:
+            print(i)
+        print('\n\n\nlen(obj_cons): ', len(obj_cons))
+        for i in obj_cons:
+            print(i)
+        print('\n\n\nlen(decomposed_cons): ', len(decomposed_cons))
+        for i in decomposed_cons:
+            print(i)
         self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(partition_cons) - len(partition_cons)/3 + len(obj_cons), len(decomposed_cons))
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
