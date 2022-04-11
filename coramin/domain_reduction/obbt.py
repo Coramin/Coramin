@@ -1,25 +1,17 @@
 import pyomo.environ as pyo
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.PyomoModel import ConcreteModel
-from pyomo.opt import SolverStatus, TerminationCondition as TC
 import warnings
 from pyomo.common.collections import ComponentMap
-from pyomo.solvers.plugins.solvers.GUROBI import GUROBISHELL
-from pyomo.solvers.plugins.solvers.gurobi_direct import GurobiDirect
-from pyomo.solvers.plugins.solvers.gurobi_persistent import GurobiPersistent
-from pyomo.solvers.plugins.solvers.CPLEX import CPLEXSHELL
-from pyomo.solvers.plugins.solvers.cplex_direct import CPLEXDirect
-from pyomo.solvers.plugins.solvers.cplex_persistent import CPLEXPersistent
-from pyomo.solvers.plugins.solvers.GLPK import GLPKSHELL
-from pyomo.solvers.plugins.solvers.persistent_solver import PersistentSolver
-from pyomo.solvers.plugins.solvers.direct_or_persistent_solver import DirectOrPersistentSolver
 from pyomo.core.kernel.objective import minimize, maximize
+from pyomo.contrib import appsi
 import logging
 import traceback
 import numpy as np
 import math
 import time
-from coramin.algorithms.ecp_bounder import ECPBounder
+from typing import Union, Sequence, Optional, List
+from pyomo.core.base.objective import ScalarObjective, _GeneralObjectiveData
 try:
     import coramin.utils.mpi_utils as mpiu
     mpi_available = True
@@ -34,12 +26,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-_mip_solver_types = {GUROBISHELL, GurobiDirect, GurobiPersistent, CPLEXSHELL, CPLEXDirect, CPLEXPersistent, GLPKSHELL,
-                     ECPBounder}
-_acceptable_termination_conditions = {TC.optimal, TC.globallyOptimal}
-_acceptable_solver_status = {SolverStatus.ok}
-
-
 class OBBTInfo(object):
     def __init__(self):
         self.total_num_problems = None
@@ -47,7 +33,13 @@ class OBBTInfo(object):
         self.num_successful_problems = None
 
 
-def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_objectives, lower_bounds=None, upper_bounds=None):
+def _bt_cleanup(
+    model, solver: Union[appsi.base.Solver, appsi.base.PersistentSolver],
+    vardatalist: Optional[List[_GeneralVarData]],
+    initial_var_values, deactivated_objectives, orig_update_config, orig_config,
+    lower_bounds: Optional[Sequence[float]] = None,
+    upper_bounds: Optional[Sequence[float]] = None
+):
     """
     Cleanup the changes made to the model during bounds tightening.
     Reactivate any deactivated objectives.
@@ -57,34 +49,31 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
     Parameters
     ----------
     model: pyo.ConcreteModel or pyo.Block
-    solver: pyomo solver object
-    vardatalist: list of pyo.Var
+    solver: Union[appsi.base.Solver, appsi.base.PersistentSolver]
+    vardatalist: List of _GeneralVarData
     initial_var_values: ComponentMap
-    deactivated_objectives: list of pyo.Objective
-    lower_bounds: list of float
+    deactivated_objectives: list of _GeneralObjectiveData
+    orig_update_config: appsi.base.UpdateConfig
+    orig_config: appsi.base.SolverConfig
+    lower_bounds: Sequence of float
         Only needed if you want to update the bounds of the variables. Should be in the same order as
         self.vars_to_tighten.
-    upper_bounds: list of float
+    upper_bounds: Sequence of float
         Only needed if you want to update the bounds of the variables. Should be in the same order as
         self.vars_to_tighten.
     """
     for v in model.component_data_objects(ctype=pyo.Var, active=None, sort=True, descend_into=True):
         v.set_value(initial_var_values[v], skip_validation=True)
 
-    # remove the obj upper bound constraint
-    using_persistent_solver = False
-    if isinstance(solver, PersistentSolver):
-        using_persistent_solver = True
-
     if hasattr(model, '__objective_ineq'):
-        if using_persistent_solver:
-            solver.remove_constraint(model.__objective_ineq)
+        if solver.is_persistent():
+            solver.remove_constraints([model.__objective_ineq])
         del model.__objective_ineq
 
     # reactivate the objectives that we deactivated
     for obj in deactivated_objectives:
         obj.activate()
-        if using_persistent_solver:
+        if solver.is_persistent():
             solver.set_objective(obj)
 
     if lower_bounds is not None and upper_bounds is not None:
@@ -93,88 +82,65 @@ def _bt_cleanup(model, solver, vardatalist, initial_var_values, deactivated_obje
             ub = upper_bounds[i]
             v.setlb(lb)
             v.setub(ub)
-            if using_persistent_solver:
-                solver.update_var(v)
     elif lower_bounds is not None:
         for i, v in enumerate(vardatalist):
             lb = lower_bounds[i]
             v.setlb(lb)
-            if using_persistent_solver:
-                solver.update_var(v)
     elif upper_bounds is not None:
         for i, v in enumerate(vardatalist):
             ub = upper_bounds[i]
             v.setub(ub)
-            if using_persistent_solver:
-                solver.update_var(v)
+    if vardatalist is not None and solver.is_persistent():
+        solver.update_variables(vardatalist)
+
+    if solver.is_persistent():
+        solver.update_config.check_for_new_or_removed_constraints = \
+            orig_update_config.check_for_new_or_removed_constraints
+        solver.update_config.check_for_new_or_removed_vars = \
+            orig_update_config.check_for_new_or_removed_vars
+        solver.update_config.check_for_new_or_removed_params = \
+            orig_update_config.check_for_new_or_removed_params
+        solver.update_config.check_for_new_objective = \
+            orig_update_config.check_for_new_objective
+        solver.update_config.update_constraints = \
+            orig_update_config.update_constraints
+        solver.update_config.update_vars = \
+            orig_update_config.update_vars
+        solver.update_config.update_params = \
+            orig_update_config.update_params
+        solver.update_config.update_named_expressions = \
+            orig_update_config.update_named_expressions
+        solver.update_config.update_objective = \
+            orig_update_config.update_objective
+        solver.update_config.treat_fixed_vars_as_params = \
+            orig_update_config.treat_fixed_vars_as_params
+
+    solver.config.stream_solver = orig_config.stream_solver
+    solver.config.load_solution = orig_config.load_solution
 
 
-def _single_solve(v, model, solver, vardatalist, lb_or_ub, obbt_info, reset=False):
+def _single_solve(v, model, solver: Union[appsi.base.Solver, appsi.base.PersistentSolver], lb_or_ub, obbt_info):
     obbt_info.num_problems_attempted += 1
     # solve for lower var bound
     if lb_or_ub == 'lb':
-        model.__obj_bounds_tightening = pyo.Objective(expr=v, sense=pyo.minimize)
+        model.__obj_bounds_tightening = ScalarObjective(expr=v, sense=pyo.minimize)
     else:
         assert lb_or_ub == 'ub'
-        model.__obj_bounds_tightening = pyo.Objective(expr=-v, sense=pyo.minimize)
-    if isinstance(solver, DirectOrPersistentSolver):
-        if isinstance(solver, PersistentSolver):
-            solver.set_objective(model.__obj_bounds_tightening)
-            if reset:
-                solver.reset()
-            results = solver.solve(tee=False, load_solutions=False, save_results=False)
-        else:
-            results = solver.solve(model, tee=False, load_solutions=False, save_results=False)
-        if ((results.solver.status in _acceptable_solver_status) and
-                (results.solver.termination_condition in _acceptable_termination_conditions)):
-            obbt_info.num_successful_problems += 1
-            if type(solver) in _mip_solver_types:
-                if lb_or_ub == 'lb':
-                    new_bnd = results.problem.lower_bound
-                else:
-                    new_bnd = -results.problem.lower_bound
-            else:
-                solver.load_vars([v])
-                new_bnd = pyo.value(v.value)
-        elif isinstance(solver, ECPBounder):
-            if lb_or_ub == 'lb':
-                if results.problem.lower_bound is not None and math.isfinite(results.problem.lower_bound):
-                    obbt_info.num_successful_problems += 1
-                    new_bnd = results.problem.lower_bound
-                else:
-                    new_bnd = None
-                    msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(
-                        v, results.solver.termination_condition)
-                    logger.warning(msg)
-            else:
-                if results.problem.upper_bound is not None and math.isfinite(results.problem.upper_bound):
-                    obbt_info.num_successful_problems += 1
-                    new_bnd = results.problem.upper_bound
-                else:
-                    new_bnd = None
-                    msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
-                    logger.warning(msg)
-        else:
-            new_bnd = None
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
-            logger.warning(msg)
+        model.__obj_bounds_tightening = ScalarObjective(expr=v, sense=pyo.maximize)
+
+    if solver.is_persistent():
+        solver.set_objective(model.__obj_bounds_tightening)
+    results = solver.solve(model)
+    if results.termination_condition == appsi.base.TerminationCondition.optimal:
+        obbt_info.num_successful_problems += 1
+    if results.best_objective_bound is not None and math.isfinite(results.best_objective_bound):
+        new_bnd = results.best_objective_bound
+    elif results.termination_condition == appsi.base.TerminationCondition.optimal:
+        new_bnd = results.best_feasible_objective  # assumes the problem is convex
     else:
-        results = solver.solve(model, tee=False, load_solutions=False)
-        if ((results.solver.status in _acceptable_solver_status) and
-                (results.solver.termination_condition in _acceptable_termination_conditions)):
-            obbt_info.num_successful_problems += 1
-            if type(solver) in _mip_solver_types:
-                if lb_or_ub == 'lb':
-                    new_bnd = results.problem.lower_bound
-                else:
-                    new_bnd = -results.problem.lower_bound
-            else:
-                model.solutions.load_from(results)
-                new_bnd = pyo.value(v.value)
-        else:
-            new_bnd = None
-            msg = 'Warning: Bounds tightening for lb for var {0} was unsuccessful. Termination condition: {1}; The lb was not changed.'.format(v, results.solver.termination_condition)
-            logger.warning(msg)
+        new_bnd = None
+        msg = f'Warning: Bounds tightening for lb for var {str(v)} was unsuccessful. Termination condition: {results.termination_condition}; The lb was not changed.'
+        logger.warning(msg)
 
     if lb_or_ub == 'lb':
         orig_lb = pyo.value(v.lb)
@@ -201,7 +167,7 @@ def _single_solve(v, model, solver, vardatalist, lb_or_ub, obbt_info, reset=Fals
     return new_bnd
 
 
-def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress_bar=False, reset=False, time_limit=math.inf, progress_bar_string=None):
+def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress_bar=False, time_limit=math.inf, progress_bar_string=None):
     """
     Tighten the lower bounds of all variables in vardatalist (or self.vars_to_tighten if vardatalist is None).
 
@@ -251,9 +217,8 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress
                         new_bounds.append(pyo.value(v.ub))
             else:
                 new_bnd = _single_solve(v=v, model=model, solver=solver,
-                                        vardatalist=vardatalist,
                                         lb_or_ub=lb_or_ub,
-                                        obbt_info=obbt_info, reset=reset)
+                                        obbt_info=obbt_info)
                 new_bounds.append(new_bnd)
     else:
         for v in vardatalist:
@@ -270,8 +235,8 @@ def _tighten_bnds(model, solver, vardatalist, lb_or_ub, obbt_info, with_progress
                         new_bounds.append(pyo.value(v.ub))
             else:
                 new_bnd = _single_solve(v=v, model=model, solver=solver,
-                                        vardatalist=vardatalist, lb_or_ub=lb_or_ub,
-                                        obbt_info=obbt_info, reset=reset)
+                                        lb_or_ub=lb_or_ub,
+                                        obbt_info=obbt_info)
                 new_bounds.append(new_bnd)
 
     return new_bounds
@@ -295,8 +260,30 @@ def _bt_prep(model, solver, objective_bound=None):
     -------
     initial_var_values: ComponentMap
     deactivated_objectives: list
+    orig_update_config: appsi.base.UpdateConfig
+    orig_config: appsi.base.SolverConfig
     """
-    if isinstance(solver, PersistentSolver):
+
+    if solver.is_persistent():
+        orig_update_config = solver.update_config()
+        solver.update_config.check_for_new_or_removed_constraints = False
+        solver.update_config.check_for_new_or_removed_vars = False
+        solver.update_config.check_for_new_or_removed_params = False
+        solver.update_config.check_for_new_objective = False
+        solver.update_config.update_constraints = False
+        solver.update_config.update_vars = False
+        solver.update_config.update_params = False
+        solver.update_config.update_named_expressions = False
+        solver.update_config.update_objective = False
+        solver.update_config.treat_fixed_vars_as_params = True
+    else:
+        orig_update_config = None
+
+    orig_config = solver.config()
+    solver.config.stream_solver = False
+    solver.config.load_solution = False
+
+    if solver.is_persistent():
         solver.set_instance(model)
 
     initial_var_values = ComponentMap()
@@ -323,10 +310,10 @@ def _bt_prep(model, solver, objective_bound=None):
         else:
             assert original_obj.sense == maximize
             model.__objective_ineq = pyo.Constraint(expr=original_obj.expr >= objective_bound)
-        if isinstance(solver, PersistentSolver):
-            solver.add_constraint(model.__objective_ineq)
+        if solver.is_persistent():
+            solver.add_constraints([model.__objective_ineq])
 
-    return initial_var_values, deactivated_objectives
+    return initial_var_values, deactivated_objectives, orig_update_config, orig_config
 
 
 def _build_vardatalist(model, varlist=None, warning_threshold=0):
@@ -376,7 +363,7 @@ def _build_vardatalist(model, varlist=None, warning_threshold=0):
 
 
 def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bounds=True, with_progress_bar=False,
-                 direction='both', reset=False, time_limit=math.inf, parallel=True, collect_obbt_info=False,
+                 direction='both', time_limit=math.inf, parallel=True, collect_obbt_info=False,
                  warning_threshold=0, progress_bar_string=None):
     """
     Perform optimization-based bounds tighening on the variables in varlist subject to the constraints in model.
@@ -385,7 +372,7 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     ----------
     model: pyo.ConcreteModel or pyo.Block
         The model to be used for bounds tightening
-    solver: pyomo solver object
+    solver: appsi.base.PersistentSolver
         The solver to be used for bounds tightening.
     varlist: list of pyo.Var
         The variables for which OBBT should be performed. If varlist is None, then we attempt to automatically
@@ -398,9 +385,6 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     with_progress_bar: bool
     direction: str
         Options are 'both', 'lbs', or 'ubs'
-    reset: bool
-        This is an option specifically for use with persistent solvers. If reset
-        is True, then any simplex warmstart will be discarded between solves.
     time_limit: float
         The maximum amount of time to be spent performing OBBT
     parallel: bool
@@ -417,13 +401,16 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     obbt_info: OBBTInfo
 
     """
+    if not isinstance(solver, appsi.base.Solver):
+        raise ValueError('Coramin requires an Appsi solver interface')
+
     obbt_info = OBBTInfo()
     obbt_info.total_num_problems = 0
     obbt_info.num_problems_attempted = 0
     obbt_info.num_successful_problems = 0
 
     t0 = time.time()
-    initial_var_values, deactivated_objectives = _bt_prep(model=model, solver=solver, objective_bound=objective_bound)
+    initial_var_values, deactivated_objectives, orig_update_config, orig_config = _bt_prep(model=model, solver=solver, objective_bound=objective_bound)
 
     vardata_list = _build_vardatalist(model=model, varlist=varlist, warning_threshold=warning_threshold)
     if mpi_available and parallel:
@@ -441,7 +428,6 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
                                                lb_or_ub='lb',
                                                obbt_info=obbt_info,
                                                with_progress_bar=with_progress_bar,
-                                               reset=reset,
                                                time_limit=(time_limit - (time.time() - t0)),
                                                progress_bar_string=progress_bar_string)
         else:
@@ -457,7 +443,6 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
                                                lb_or_ub='ub',
                                                obbt_info=obbt_info,
                                                with_progress_bar=with_progress_bar,
-                                               reset=reset,
                                                time_limit=(time_limit - (time.time() - t0)),
                                                progress_bar_string=progress_bar_string)
         else:
@@ -523,8 +508,13 @@ def perform_obbt(model, solver, varlist=None, objective_bound=None, update_bound
     if update_bounds:
         _lower_bounds = global_lower
         _upper_bounds = global_upper
-    _bt_cleanup(model=model, solver=solver, vardatalist=vardata_list, initial_var_values=initial_var_values,
-                deactivated_objectives=deactivated_objectives, lower_bounds=_lower_bounds, upper_bounds=_upper_bounds)
+    _bt_cleanup(
+        model=model, solver=solver, vardatalist=vardata_list,
+        initial_var_values=initial_var_values,
+        deactivated_objectives=deactivated_objectives,
+        orig_update_config=orig_update_config, orig_config=orig_config,
+        lower_bounds=_lower_bounds, upper_bounds=_upper_bounds
+    )
 
     if collect_obbt_info:
         return global_lower, global_upper, obbt_info

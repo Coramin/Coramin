@@ -16,6 +16,7 @@ import os
 from coramin.utils.pyomo_utils import get_objective
 import filecmp
 from nose.plugins.attrib import attr
+from pyomo.contrib import appsi
 
 
 class TestTreeBlock(unittest.TestCase):
@@ -638,7 +639,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.FULL_SPACE, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -653,7 +654,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.LEAVES, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -668,7 +669,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.NONE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -683,7 +684,7 @@ class TestDBT(unittest.TestCase):
         m = self.get_model()
         b0 = m.children[0]
         b1 = m.children[1]
-        opt = pe.SolverFactory('gurobi_persistent')
+        opt = appsi.solvers.Gurobi()
         perform_dbt(relaxation=m, solver=opt, obbt_method=OBBTMethod.DECOMPOSED, filter_method=FilterMethod.AGGRESSIVE)
         self.assertAlmostEqual(b0.x.lb, -1)
         self.assertAlmostEqual(b0.x.ub, 1)
@@ -757,8 +758,9 @@ class TestDBTWithECP(unittest.TestCase):
 
         m = self.create_model()
         coramin.relaxations.relax(m, descend_into=True, in_place=True)
-        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
-        opt.options.keep_cuts = False
+        opt = coramin.algorithms.ECPBounder(subproblem_solver=appsi.solvers.Gurobi())
+        opt.config.keep_cuts = False
+        opt.config.feasibility_tol = 1e-5
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True)
         m.write(f'rank{rank}.lp')
@@ -771,8 +773,9 @@ class TestDBTWithECP(unittest.TestCase):
         # the next bit of code is needed to ensure the above test actually tests what we think it is testing
         m = self.create_model()
         coramin.relaxations.relax(m, descend_into=True, in_place=True)
-        opt = coramin.algorithms.ECPBounder(subproblem_solver='gurobi_persistent')
-        opt.options.keep_cuts = False
+        opt = coramin.algorithms.ECPBounder(subproblem_solver=appsi.solvers.Gurobi())
+        opt.config.keep_cuts = False
+        opt.config.feasibility_tol = 1e-5
         coramin.domain_reduction.perform_dbt(m, opt, filter_method=coramin.domain_reduction.FilterMethod.NONE,
                                              parallel=True, update_relaxations_between_stages=False)
         m.write(f'rank{rank}.lp')
