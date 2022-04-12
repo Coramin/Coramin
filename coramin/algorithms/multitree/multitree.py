@@ -405,7 +405,7 @@ class MultiTree(Solver):
             if v.fixed:
                 continue
             val = integer_var_values[v]
-            assert math.isclose(val, round(val), rel_tol=1e-6, abs_tol=self.config.feasibility_tolerance)
+            assert math.isclose(val, round(val), rel_tol=1e-5, abs_tol=self.config.feasibility_tolerance)
             val = round(val)
             nlp_v = self._rel_to_nlp_map[v]
             orig_v = self._nlp_to_orig_map[nlp_v]
