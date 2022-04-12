@@ -353,19 +353,19 @@ class MultiTree(Solver):
                     if v.value is None:
                         assert v.stale
                         continue
-                    if not math.isclose(v.value, round(v.value)):
+                    if not math.isclose(v.value, round(v.value), rel_tol=1e-6, abs_tol=self.config.feasibility_tolerance):
                         all_cons_satisfied = False
                         break
             if all_cons_satisfied:
                 for rel_v, nlp_v in self._rel_to_nlp_map.items():
                     if rel_v.value is None:
                         assert rel_v.stale
-                        if rel_v.has_lb() and rel_v.has_ub() and math.isclose(rel_v.lb, rel_v.ub):
-                            nlp_v.value = rel_v.lb
+                        if rel_v.has_lb() and rel_v.has_ub() and math.isclose(rel_v.lb, rel_v.ub, rel_tol=1e-6, abs_tol=self.config.feasibility_tolerance):
+                            nlp_v.value = 0.5*(rel_v.lb + rel_v.ub)
                         else:
                             nlp_v.value = None
                     else:
-                        nlp_v.value = rel_v.value
+                        nlp_v.set_value(rel_v.value, skip_validation=True)
                 self._update_primal_bound(res)
 
     def _update_primal_bound(self, res: Results):
@@ -405,7 +405,7 @@ class MultiTree(Solver):
             if v.fixed:
                 continue
             val = integer_var_values[v]
-            assert math.isclose(val, round(val), rel_tol=1e-6, abs_tol=1e-6)
+            assert math.isclose(val, round(val), rel_tol=1e-6, abs_tol=self.config.feasibility_tolerance)
             val = round(val)
             nlp_v = self._rel_to_nlp_map[v]
             orig_v = self._nlp_to_orig_map[nlp_v]
@@ -447,7 +447,7 @@ class MultiTree(Solver):
                 if v.fixed:
                     continue
                 if v.has_lb() and v.has_ub():
-                    if math.isclose(v.lb, v.ub):
+                    if math.isclose(v.lb, v.ub, rel_tol=1e-6, abs_tol=self.config.feasibility_tolerance):
                         v.fix(0.5 * (v.lb + v.ub))
                         fixed_vars.append(v)
                     else:
