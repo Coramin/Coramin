@@ -1,8 +1,8 @@
 import pyomo.environ as pe
-from pyomo.common.collections import ComponentMap
+from pyomo.common.collections import ComponentMap, ComponentSet
 import pyomo.core.expr.numeric_expr as numeric_expr
 from pyomo.core.expr.visitor import ExpressionValueVisitor, identify_variables
-from pyomo.core.expr.numvalue import nonpyomo_leaf_types, value
+from pyomo.core.expr.numvalue import nonpyomo_leaf_types, value, NumericValue
 from pyomo.core.expr.numvalue import is_fixed, polynomial_degree, is_constant, native_numeric_types
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr, fbbt
 import math
@@ -10,11 +10,17 @@ from pyomo.core.base.constraint import Constraint
 import logging
 from .univariate import PWUnivariateRelaxation, PWXSquaredRelaxation, PWCosRelaxation, PWSinRelaxation, PWArctanRelaxation
 from .mccormick import PWMcCormickRelaxation
+from .multivariate import MultivariateRelaxation
 from coramin.utils.coramin_enums import RelaxationSide, FunctionShape
 from pyomo.gdp import Disjunct
 from pyomo.core.base.expression import _GeneralExpressionData, SimpleExpression
 from coramin.relaxations.iterators import nonrelaxation_component_data_objects
 from pyomo.contrib import appsi
+from pyomo.repn.standard_repn import generate_standard_repn
+from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
+from pyomo.core.expr.sympy_tools import sympyify_expression, sympy2pyomo_expression
+from pyomo.contrib.fbbt import interval
+from pyomo.core.expr.compare import convert_expression_to_prefix_notation
 
 
 logger = logging.getLogger(__name__)
@@ -859,11 +865,151 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
         return False, None
 
 
+def simplify_expr(expr):
+    om, se = sympyify_expression(expr)
+    se = se.simplify()
+    return sympy2pyomo_expression(se, om)
+
+
+def get_interval_hessian(expr):
+    var_list = list(identify_variables(expr=expr, include_fixed=False))
+    var_set = ComponentSet(var_list)
+    ders = reverse_sd(expr)
+    ders2 = pe.ComponentMap()
+    for v in var_list:
+        ders2[v] = reverse_sd(ders[v])
+
+    res = pe.ComponentMap()
+    for v1 in var_list:
+        res[v1] = pe.ComponentMap()
+        for v2, der in ders2[v1].items():
+            if v2 in var_set:
+                if is_fixed(der):
+                    val = pe.value(der)
+                    res[v1][v2] = (val, val)
+                else:
+                    lb, ub = compute_bounds_on_expr(simplify_expr(der))
+                    if lb is None:
+                        lb = -math.inf
+                    if ub is None:
+                        ub = math.inf
+                    res[v1][v2] = (lb, ub)
+
+    return var_list, res
+
+
+def guaranteed_convex(hessian, var_list):
+    convex = True
+
+    # first see if any diagonal element can be negative
+    for v1 in var_list:
+        h = hessian[v1]
+        if v1 in h:
+            if h[v1][0] < 0:
+                convex = False
+                break
+
+    if convex:
+        for v1 in var_list:
+            h = hessian[v1]
+            if v1 in h:
+                min_eig = h[v1][0]
+            else:
+                min_eig = 0
+            for v2, (lb, ub) in h.items():
+                if v2 is v1:
+                    continue
+                min_eig -= max(abs(lb), abs(ub))
+                if min_eig < 0:
+                    convex = False
+                    break
+            if not convex:
+                break
+
+    return convex
+
+
+def negate_hessian(hessian):
+    res = pe.ComponentMap()
+    for v1 in hessian.keys():
+        res[v1] = pe.ComponentMap()
+        for v2, (lb, ub) in hessian[v1].items():
+            res[v1][v2] = interval.sub(0, 0, lb, ub)
+    return res
+
+
+def _get_prefix_notation(expr):
+    pn = convert_expression_to_prefix_notation(expr, include_named_exprs=False)
+    res = list()
+    for i in pn:
+        itype = type(i)
+        if itype is tuple or itype in nonpyomo_leaf_types:
+            res.append(i)
+        elif isinstance(i, NumericValue):
+            if i.is_fixed():
+                res.append(pe.value(i))
+            else:
+                assert i.is_variable_type()
+                res.append(id(i))
+        else:
+            raise NotImplementedError(f'unexpected entry in prefix notation: {str(i)}')
+    return tuple(res)
+
+
 def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
-    visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
-                                           relaxation_side_map=relaxation_side_map, counter=counter,
-                                           degree_map=degree_map)
-    new_expr = visitor.dfs_postorder_stack(expr)
+    vlist, hessian = get_interval_hessian(expr)
+    is_convex = guaranteed_convex(hessian, vlist)
+    is_concave = guaranteed_convex(negate_hessian(hessian), vlist)
+
+    if len(vlist) == 1 and (is_convex or is_concave):
+        pn = _get_prefix_notation(expr)
+        if pn in aux_var_map:
+            new_expr, relaxation = aux_var_map[pn]
+            relaxation_side = relaxation_side_map[expr]
+            if relaxation_side != relaxation.relaxation_side:
+                relaxation.relaxation_side = RelaxationSide.BOTH
+        else:
+            new_expr = _get_aux_var(parent_block, expr)
+            relaxation = PWUnivariateRelaxation()
+            if is_convex:
+                shape = FunctionShape.CONVEX
+            else:
+                shape = FunctionShape.CONCAVE
+            relaxation.set_input(
+                x=vlist[0], aux_var=new_expr, relaxation_side=relaxation_side_map[expr],
+                f_x_expr=expr, shape=shape,
+            )
+            aux_var_map[pn] = (new_expr, relaxation)
+            setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+            counter.increment()
+        degree_map[new_expr] = 1
+    elif (
+        (is_convex and relaxation_side_map[expr] == RelaxationSide.UNDER) or
+        (is_concave and relaxation_side_map[expr] == RelaxationSide.OVER)
+    ):
+        pn = _get_prefix_notation(expr)
+        if pn in aux_var_map:
+            new_expr, relaxation = aux_var_map[pn]
+            assert relaxation.relaxation_side == relaxation_side_map[expr]
+        else:
+            new_expr = _get_aux_var(parent_block, expr)
+            relaxation = MultivariateRelaxation()
+            if is_convex:
+                shape = FunctionShape.CONVEX
+            else:
+                shape = FunctionShape.CONCAVE
+            relaxation.set_input(
+                aux_var=new_expr, shape=shape, f_x_expr=expr,
+            )
+            aux_var_map[pn] = (new_expr, relaxation)
+            setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+            counter.increment()
+        degree_map[new_expr] = 1
+    else:
+        visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
+                                               relaxation_side_map=relaxation_side_map, counter=counter,
+                                               degree_map=degree_map)
+        new_expr = visitor.dfs_postorder_stack(expr)
     return new_expr
 
 
@@ -945,8 +1091,6 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
             raise ValueError('Encountered a constraint without a lower or an upper bound: ' + str(c))
 
         parent_block = c.parent_block()
-        relaxation_side_map = ComponentMap()
-        relaxation_side_map[c.body] = relaxation_side
 
         if parent_block in counter_dict:
             counter = counter_dict[parent_block]
@@ -957,8 +1101,19 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
             counter = RelaxationCounter()
             counter_dict[parent_block] = counter
 
-        new_body = _relax_expr(expr=c.body, aux_var_map=aux_var_map, parent_block=parent_block,
-                               relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
+        repn = generate_standard_repn(c.body, quadratic=False)
+        assert len(repn.quadratic_vars) == 0
+        assert repn.nonlinear_expr is not None
+        if len(repn.linear_vars) > 0:
+            new_body = numeric_expr.LinearExpression(constant=repn.constant, linear_coefs=repn.linear_coefs, linear_vars=repn.linear_vars)
+        else:
+            new_body = repn.constant
+
+        relaxation_side_map = ComponentMap()
+        relaxation_side_map[repn.nonlinear_expr] = relaxation_side
+
+        new_body += _relax_expr(expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
+                                relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         lb = c.lower
         ub = c.upper
         parent_block.aux_cons.add(pe.inequality(lb, new_body, ub))
@@ -982,8 +1137,6 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
             raise ValueError('Encountered an objective with an unrecognized sense: ' + str(c))
 
         parent_block = c.parent_block()
-        relaxation_side_map = ComponentMap()
-        relaxation_side_map[c.expr] = relaxation_side
 
         if parent_block in counter_dict:
             counter = counter_dict[parent_block]
@@ -997,8 +1150,19 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         if not hasattr(parent_block, 'aux_objectives'):
             parent_block.aux_objectives = pe.ObjectiveList()
 
-        new_body = _relax_expr(expr=c.expr, aux_var_map=aux_var_map, parent_block=parent_block,
-                               relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
+        repn = generate_standard_repn(c.expr, quadratic=False)
+        assert len(repn.quadratic_vars) == 0
+        assert repn.nonlinear_expr is not None
+        if len(repn.linear_vars) > 0:
+            new_body = numeric_expr.LinearExpression(constant=repn.constant, linear_coefs=repn.linear_coefs, linear_vars=repn.linear_vars)
+        else:
+            new_body = repn.constant
+
+        relaxation_side_map = ComponentMap()
+        relaxation_side_map[repn.nonlinear_expr] = relaxation_side
+
+        new_body += _relax_expr(expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
+                                relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         sense = c.sense
         parent_block.aux_objectives.add(new_body, sense=sense)
         parent_component = c.parent_component()
