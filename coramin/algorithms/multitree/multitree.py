@@ -17,7 +17,7 @@ from pyomo.contrib.appsi.base import (
 )
 from pyomo.contrib import appsi
 from typing import Tuple, Optional, MutableMapping, Sequence
-from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt
+from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt, NonNegativeFloat
 import logging
 from coramin.relaxations.auto_relax import relax
 from coramin.relaxations.iterators import relaxation_data_objects
@@ -63,6 +63,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("root_obbt_max_iter", ConfigValue(domain=NonNegativeInt))
         self.declare("show_obbt_progress_bar", ConfigValue(domain=bool))
         self.declare("integer_tolerance", ConfigValue(domain=PositiveFloat))
+        self.declare("small_coef", ConfigValue(domain=NonNegativeFloat))
+        self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -75,6 +77,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.max_iter = 1000
         self.root_obbt_max_iter = 1000
         self.show_obbt_progress_bar = False
+        self.small_coef = 1e-10
+        self.large_coef = 1e5
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -682,6 +686,8 @@ class MultiTree(Solver):
         delattr(self._relaxation, tmp_name)
 
         for b in relaxation_data_objects(self._relaxation, descend_into=True, active=True):
+            b.small_coef = self.config.small_coef
+            b.large_coef = self.config.large_coef
             b.rebuild()
 
     def _get_nlp_specs_from_rel(self):

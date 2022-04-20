@@ -957,7 +957,17 @@ def _get_prefix_notation(expr):
     return tuple(res)
 
 
-def _relax_expr(orig_expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
+def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
+    visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
+                                           relaxation_side_map=relaxation_side_map, counter=counter,
+                                           degree_map=degree_map)
+    new_expr = visitor.dfs_postorder_stack(expr)
+    return new_expr
+
+
+def _relax_expr_with_convexity_check(
+    orig_expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map
+):
     _expr = simplify_expr(orig_expr)
     list_of_exprs = split_expr(_expr)
     list_of_new_exprs = list()
@@ -1121,8 +1131,11 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr(orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
-                                relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
+        new_body += _relax_expr_with_convexity_check(
+            orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+            parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+            counter=counter, degree_map=degree_map
+        )
         lb = c.lower
         ub = c.upper
         parent_block.aux_cons.add(pe.inequality(lb, new_body, ub))
@@ -1170,8 +1183,11 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr(orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
-                                relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
+        new_body += _relax_expr_with_convexity_check(
+            orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+            parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+            counter=counter, degree_map=degree_map
+        )
         sense = c.sense
         parent_block.aux_objectives.add(new_body, sense=sense)
         parent_component = c.parent_component()
