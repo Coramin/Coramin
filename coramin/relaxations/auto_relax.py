@@ -21,6 +21,7 @@ from pyomo.core.expr.calculus.diff_with_pyomo import reverse_sd
 from pyomo.core.expr.sympy_tools import sympyify_expression, sympy2pyomo_expression
 from pyomo.contrib.fbbt import interval
 from pyomo.core.expr.compare import convert_expression_to_prefix_notation
+from .split_expr import split_expr
 
 
 logger = logging.getLogger(__name__)
@@ -956,61 +957,69 @@ def _get_prefix_notation(expr):
     return tuple(res)
 
 
-def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
-    vlist, hessian = get_interval_hessian(expr)
-    is_convex = guaranteed_convex(hessian, vlist)
-    is_concave = guaranteed_convex(negate_hessian(hessian), vlist)
+def _relax_expr(orig_expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map):
+    _expr = simplify_expr(orig_expr)
+    list_of_exprs = split_expr(_expr)
+    list_of_new_exprs = list()
 
-    if len(vlist) == 1 and (is_convex or is_concave):
-        pn = _get_prefix_notation(expr)
-        if pn in aux_var_map:
-            new_expr, relaxation = aux_var_map[pn]
-            relaxation_side = relaxation_side_map[expr]
-            if relaxation_side != relaxation.relaxation_side:
-                relaxation.relaxation_side = RelaxationSide.BOTH
-        else:
-            new_expr = _get_aux_var(parent_block, expr)
-            relaxation = PWUnivariateRelaxation()
-            if is_convex:
-                shape = FunctionShape.CONVEX
+    for expr in list_of_exprs:
+        relaxation_side_map[expr] = relaxation_side_map[orig_expr]
+        vlist, hessian = get_interval_hessian(expr)
+        is_convex = guaranteed_convex(hessian, vlist)
+        is_concave = guaranteed_convex(negate_hessian(hessian), vlist)
+
+        if len(vlist) == 1 and (is_convex or is_concave):
+            pn = _get_prefix_notation(expr)
+            if pn in aux_var_map:
+                new_expr, relaxation = aux_var_map[pn]
+                relaxation_side = relaxation_side_map[expr]
+                if relaxation_side != relaxation.relaxation_side:
+                    relaxation.relaxation_side = RelaxationSide.BOTH
             else:
-                shape = FunctionShape.CONCAVE
-            relaxation.set_input(
-                x=vlist[0], aux_var=new_expr, relaxation_side=relaxation_side_map[expr],
-                f_x_expr=expr, shape=shape,
-            )
-            aux_var_map[pn] = (new_expr, relaxation)
-            setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
-            counter.increment()
-        degree_map[new_expr] = 1
-    elif (
-        (is_convex and relaxation_side_map[expr] == RelaxationSide.UNDER) or
-        (is_concave and relaxation_side_map[expr] == RelaxationSide.OVER)
-    ):
-        pn = _get_prefix_notation(expr)
-        if pn in aux_var_map:
-            new_expr, relaxation = aux_var_map[pn]
-            assert relaxation.relaxation_side == relaxation_side_map[expr]
-        else:
-            new_expr = _get_aux_var(parent_block, expr)
-            relaxation = MultivariateRelaxation()
-            if is_convex:
-                shape = FunctionShape.CONVEX
+                new_expr = _get_aux_var(parent_block, expr)
+                relaxation = PWUnivariateRelaxation()
+                if is_convex:
+                    shape = FunctionShape.CONVEX
+                else:
+                    shape = FunctionShape.CONCAVE
+                relaxation.set_input(
+                    x=vlist[0], aux_var=new_expr, relaxation_side=relaxation_side_map[expr],
+                    f_x_expr=expr, shape=shape,
+                )
+                aux_var_map[pn] = (new_expr, relaxation)
+                setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+                counter.increment()
+            degree_map[new_expr] = 1
+        elif (
+            len(vlist) <= 10 and
+            ((is_convex and relaxation_side_map[expr] == RelaxationSide.UNDER) or
+             (is_concave and relaxation_side_map[expr] == RelaxationSide.OVER))
+        ):
+            pn = _get_prefix_notation(expr)
+            if pn in aux_var_map:
+                new_expr, relaxation = aux_var_map[pn]
+                assert relaxation.relaxation_side == relaxation_side_map[expr]
             else:
-                shape = FunctionShape.CONCAVE
-            relaxation.set_input(
-                aux_var=new_expr, shape=shape, f_x_expr=expr,
-            )
-            aux_var_map[pn] = (new_expr, relaxation)
-            setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
-            counter.increment()
-        degree_map[new_expr] = 1
-    else:
-        visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
-                                               relaxation_side_map=relaxation_side_map, counter=counter,
-                                               degree_map=degree_map)
-        new_expr = visitor.dfs_postorder_stack(expr)
-    return new_expr
+                new_expr = _get_aux_var(parent_block, expr)
+                relaxation = MultivariateRelaxation()
+                if is_convex:
+                    shape = FunctionShape.CONVEX
+                else:
+                    shape = FunctionShape.CONCAVE
+                relaxation.set_input(
+                    aux_var=new_expr, shape=shape, f_x_expr=expr,
+                )
+                aux_var_map[pn] = (new_expr, relaxation)
+                setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+                counter.increment()
+            degree_map[new_expr] = 1
+        else:
+            visitor = _FactorableRelaxationVisitor(aux_var_map=aux_var_map, parent_block=parent_block,
+                                                   relaxation_side_map=relaxation_side_map, counter=counter,
+                                                   degree_map=degree_map)
+            new_expr = visitor.dfs_postorder_stack(expr)
+        list_of_new_exprs.append(new_expr)
+    return sum(list_of_new_exprs)
 
 
 def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=None):
@@ -1112,7 +1121,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr(expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
+        new_body += _relax_expr(orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
                                 relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         lb = c.lower
         ub = c.upper
@@ -1161,7 +1170,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr(expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
+        new_body += _relax_expr(orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map, parent_block=parent_block,
                                 relaxation_side_map=relaxation_side_map, counter=counter, degree_map=degree_map)
         sense = c.sense
         parent_block.aux_objectives.add(new_body, sense=sense)

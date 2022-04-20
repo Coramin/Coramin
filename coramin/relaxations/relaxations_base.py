@@ -88,7 +88,7 @@ def _check_cut(cut: LinearExpression, too_small, too_large, relaxation_side, saf
         coef = coef_p.value
         if not math.isfinite(coef) or abs(coef) >= too_large:
             res = (False, v, coef, None)
-        elif 0 < abs(coef) <= too_small:
+        elif 0 < abs(coef) <= too_small and v.has_lb() and v.has_ub():
             coef_p._value = 0
             if relaxation_side == RelaxationSide.UNDER:
                 cut.constant._value = interval.add(cut.constant.value, cut.constant.value,
