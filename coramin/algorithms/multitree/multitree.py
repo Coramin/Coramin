@@ -484,6 +484,8 @@ class MultiTree(Solver):
                     nlp_res = self.nlp_solver.solve(self._original_model)
                     if nlp_res.best_feasible_objective is not None:
                         nlp_res.solution_loader.load_vars()
+                        for nlp_v, orig_v in self._nlp_to_orig_map.items():
+                            nlp_v.value = orig_v.value
             else:
                 nlp_obj = get_objective(self._nlp)
                 # there should not be any active constraints
