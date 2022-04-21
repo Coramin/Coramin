@@ -67,6 +67,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("integer_tolerance", ConfigValue(domain=PositiveFloat))
         self.declare("small_coef", ConfigValue(domain=NonNegativeFloat))
         self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
+        self.declare("safety_tol", ConfigValue(domain=NonNegativeFloat))
         self.declare("convexity_effort", ConfigValue(domain=InEnum(ConvexityEffort)))
 
         self.solver_output_logger = logger
@@ -82,6 +83,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.show_obbt_progress_bar = False
         self.small_coef = 1e-10
         self.large_coef = 1e5
+        self.safety_tol = 1e-10
         self.convexity_effort = ConvexityEffort.medium
 
 
@@ -693,6 +695,7 @@ class MultiTree(Solver):
         for b in relaxation_data_objects(self._relaxation, descend_into=True, active=True):
             b.small_coef = self.config.small_coef
             b.large_coef = self.config.large_coef
+            b.safety_tol = self.config.safety_tol
             b.rebuild()
 
     def _get_nlp_specs_from_rel(self):
