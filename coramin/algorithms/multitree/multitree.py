@@ -858,7 +858,7 @@ class MultiTree(Solver):
             num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
             pop_integers(relaxed_binaries, relaxed_integers)
             should_terminate, reason = self._should_terminate()
-            if (num_lb + num_ub) < 1 or (avg_lb < 1e-3 and avg_ub < 1e-3):
+            if (num_lb + num_ub) < 1 or (avg_lb < 1e-1 and avg_ub < 1e-1):
                 break
             if should_terminate:
                 return self._get_results(reason)
@@ -868,7 +868,13 @@ class MultiTree(Solver):
             should_terminate, reason = self._should_terminate()
             if should_terminate:
                 break
-            
+
+            vars_to_tighten = collect_vars_to_tighten(self._relaxation)
+            num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
+            should_terminate, reason = self._should_terminate()
+            if should_terminate:
+                break
+
             rel_res = self._solve_relaxation()
 
             should_terminate, reason = self._should_terminate()
