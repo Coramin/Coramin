@@ -1,3 +1,4 @@
+import enum
 import pyomo.environ as pe
 from pyomo.common.collections import ComponentMap, ComponentSet
 import pyomo.core.expr.numeric_expr as numeric_expr
@@ -866,13 +867,21 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
         return False, None
 
 
+class ConvexityEffort(enum.Enum):
+    none = 'none'
+    low = 'low'
+    medium = 'medium'
+    high = 'high'
+
+
 def simplify_expr(expr):
     om, se = sympyify_expression(expr)
     se = se.simplify()
     return sympy2pyomo_expression(se, om)
 
 
-def get_interval_hessian(expr):
+def get_interval_hessian(expr, convexity_effort='medium'):
+    convexity_effort = ConvexityEffort(convexity_effort)
     var_list = list(identify_variables(expr=expr, include_fixed=False))
     var_set = ComponentSet(var_list)
     ders = reverse_sd(expr)
@@ -889,7 +898,11 @@ def get_interval_hessian(expr):
                     val = pe.value(der)
                     res[v1][v2] = (val, val)
                 else:
-                    lb, ub = compute_bounds_on_expr(simplify_expr(der))
+                    if convexity_effort == ConvexityEffort.high:
+                        _der = simplify_expr(der)
+                    else:
+                        _der = der
+                    lb, ub = compute_bounds_on_expr(_der)
                     if lb is None:
                         lb = -math.inf
                     if ub is None:
@@ -966,15 +979,19 @@ def _relax_expr(expr, aux_var_map, parent_block, relaxation_side_map, counter, d
 
 
 def _relax_expr_with_convexity_check(
-    orig_expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map
+    orig_expr, aux_var_map, parent_block, relaxation_side_map, counter, degree_map,
+    convexity_effort
 ):
-    _expr = simplify_expr(orig_expr)
+    if convexity_effort == ConvexityEffort.high:
+        _expr = simplify_expr(orig_expr)
+    else:
+        _expr = orig_expr
     list_of_exprs = split_expr(_expr)
     list_of_new_exprs = list()
 
     for expr in list_of_exprs:
         relaxation_side_map[expr] = relaxation_side_map[orig_expr]
-        vlist, hessian = get_interval_hessian(expr)
+        vlist, hessian = get_interval_hessian(expr, convexity_effort=convexity_effort)
         is_convex = guaranteed_convex(hessian, vlist)
         is_concave = guaranteed_convex(negate_hessian(hessian), vlist)
 
@@ -1032,7 +1049,10 @@ def _relax_expr_with_convexity_check(
     return sum(list_of_new_exprs)
 
 
-def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=None):
+def relax(
+    model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=None,
+    convexity_effort='medium',
+):
     """
     Create a convex relaxation of the model.
 
@@ -1051,6 +1071,7 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         FBBT will not be used.
     fbbt_options: dict, optional
         The options to pass to the call to fbbt. See pyomo.contrib.fbbt.fbbt.fbbt for details.
+    convexity_effort: ConvexityEffort
 
     Returns
     -------
@@ -1073,6 +1094,8 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
     introduced in the relaxed model corresponds to a node in the DAG. If we use suspect, then we can easily 
     update the bounds of the auxilliary variables without performing FBBT a second time.
     """
+    convexity_effort = ConvexityEffort(convexity_effort)
+
     if not in_place:
         m = model.clone()
     else:
@@ -1131,11 +1154,19 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr_with_convexity_check(
-            orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
-            parent_block=parent_block, relaxation_side_map=relaxation_side_map,
-            counter=counter, degree_map=degree_map
-        )
+        if convexity_effort == ConvexityEffort.none:
+            new_body += _relax_expr(
+                expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+                parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+                counter=counter, degree_map=degree_map
+            )
+        else:
+            new_body += _relax_expr_with_convexity_check(
+                orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+                parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+                counter=counter, degree_map=degree_map,
+                convexity_effort=convexity_effort
+            )
         lb = c.lower
         ub = c.upper
         parent_block.aux_cons.add(pe.inequality(lb, new_body, ub))
@@ -1183,11 +1214,19 @@ def relax(model, descend_into=None, in_place=False, use_fbbt=True, fbbt_options=
         relaxation_side_map = ComponentMap()
         relaxation_side_map[repn.nonlinear_expr] = relaxation_side
 
-        new_body += _relax_expr_with_convexity_check(
-            orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
-            parent_block=parent_block, relaxation_side_map=relaxation_side_map,
-            counter=counter, degree_map=degree_map
-        )
+        if convexity_effort == ConvexityEffort.none:
+            new_body += _relax_expr(
+                expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+                parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+                counter=counter, degree_map=degree_map
+            )
+        else:
+            new_body += _relax_expr_with_convexity_check(
+                orig_expr=repn.nonlinear_expr, aux_var_map=aux_var_map,
+                parent_block=parent_block, relaxation_side_map=relaxation_side_map,
+                counter=counter, degree_map=degree_map,
+                convexity_effort=convexity_effort
+            )
         sense = c.sense
         parent_block.aux_objectives.add(new_body, sense=sense)
         parent_component = c.parent_component()

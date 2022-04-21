@@ -17,9 +17,11 @@ from pyomo.contrib.appsi.base import (
 )
 from pyomo.contrib import appsi
 from typing import Tuple, Optional, MutableMapping, Sequence
-from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt, NonNegativeFloat
+from pyomo.common.config import (
+    ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt, NonNegativeFloat, InEnum
+)
 import logging
-from coramin.relaxations.auto_relax import relax
+from coramin.relaxations.auto_relax import relax, ConvexityEffort
 from coramin.relaxations.iterators import relaxation_data_objects
 from coramin.utils.coramin_enums import RelaxationSide
 from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
@@ -65,6 +67,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("integer_tolerance", ConfigValue(domain=PositiveFloat))
         self.declare("small_coef", ConfigValue(domain=NonNegativeFloat))
         self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
+        self.declare("convexity_effort", ConfigValue(domain=InEnum(ConvexityEffort)))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -79,6 +82,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.show_obbt_progress_bar = False
         self.small_coef = 1e-10
         self.large_coef = 1e5
+        self.convexity_effort = ConvexityEffort.medium
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -662,6 +666,7 @@ class MultiTree(Solver):
             in_place=False,
             use_fbbt=True,
             fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 5},
+            convexity_effort=self.config.convexity_effort
         )
         new_vars = getattr(self._nlp, tmp_name)
         self._nlp_to_orig_map = pe.ComponentMap(zip(new_vars, all_vars))

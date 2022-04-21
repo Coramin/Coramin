@@ -9,6 +9,8 @@ import numpy as np
 from pyomo.core.base.param import _ParamData, ScalarParam
 from pyomo.core.expr.sympy_tools import sympyify_expression
 from pyomo.contrib import appsi
+from coramin.utils import RelaxationSide
+from coramin.relaxations.auto_relax import ConvexityEffort
 
 
 class TestAutoRelax(unittest.TestCase):
@@ -869,161 +871,165 @@ def _log_of_polynomial(x):
     return pe.log(x**7 + x**5 + x**3 + x)
 
 
+def _x_times_x(x):
+    return x * x
+
+
+def _quadratic(x):
+    return x**2
+
+
+def _sqrt(x):
+    return x**0.5
+
+
+def _fractional_exp(x):
+    return x**1.5
+
+
+def _variable_exp(x):
+    return 1.2**x
+
+
+def _cubic(x):
+    return x**3
+
+
+def _pow_neg_2(x):
+    return x**-2
+
+
+def _pow_neg_3(x):
+    return x**-3
+
+
+def _pow_neg_point5(x):
+    return x**(-0.5)
+
+
+def _pow_neg_1point2(x):
+    return x**(-1.2)
+
+
 class TestUnivariate(unittest.TestCase):
-    def helper(self, func, bounds_list, relaxation_side):
-        for lb, ub in bounds_list:
-            m = pe.ConcreteModel()
-            m.x = pe.Var(bounds=(lb, ub))
-            m.aux = pe.Var()
-            expr = func(m.x)
-            if relaxation_side == coramin.utils.RelaxationSide.BOTH:
-                m.c = pe.Constraint(expr=m.aux == expr)
-            elif relaxation_side == coramin.utils.RelaxationSide.UNDER:
-                m.c = pe.Constraint(expr=m.aux >= expr)
-            elif relaxation_side == coramin.utils.RelaxationSide.OVER:
-                m.c = pe.Constraint(expr=m.aux <= expr)
-            coramin.relaxations.relax(m, in_place=True)
-            opt = appsi.solvers.Gurobi()
-            all_vars = list(m.component_data_objects(pe.Var, descend_into=True))
-            m.obj = pe.Objective(expr=sum(i**2 for i in all_vars))
+    def helper(self, func, bounds_list):
+        for relaxation_side in [
+            RelaxationSide.UNDER, RelaxationSide.OVER, RelaxationSide.BOTH
+        ]:
+            for convexity_effort in [
+                ConvexityEffort.none, ConvexityEffort.medium, ConvexityEffort.high
+            ]:
+                for lb, ub in bounds_list:
+                    m = pe.ConcreteModel()
+                    m.x = pe.Var(bounds=(lb, ub))
+                    m.aux = pe.Var()
+                    expr = func(m.x)
+                    if relaxation_side == coramin.utils.RelaxationSide.BOTH:
+                        m.c = pe.Constraint(expr=m.aux == expr)
+                    elif relaxation_side == coramin.utils.RelaxationSide.UNDER:
+                        m.c = pe.Constraint(expr=m.aux >= expr)
+                    elif relaxation_side == coramin.utils.RelaxationSide.OVER:
+                        m.c = pe.Constraint(expr=m.aux <= expr)
+                    coramin.relaxations.relax(
+                        m, in_place=True, convexity_effort=convexity_effort
+                    )
+                    opt = appsi.solvers.Gurobi()
+                    all_vars = list(m.component_data_objects(pe.Var, descend_into=True))
+                    m.obj = pe.Objective(expr=sum(i**2 for i in all_vars))
 
-            # make sure the original curve is feasible for the relaxation
-            for _x in [float(i) for i in np.linspace(lb, ub, 10)]:
-                m.x.fix(_x)
-                m.aux.fix(pe.value(expr))
-                res = opt.solve(m)
-                self.assertEqual(res.termination_condition,
-                                 appsi.base.TerminationCondition.optimal)
-                if relaxation_side == coramin.utils.RelaxationSide.UNDER:
-                    m.aux.fix(max(pe.value(func(lb)), pe.value(func(ub))) + 1)
-                    res = opt.solve(m)
-                    self.assertEqual(res.termination_condition,
-                                     appsi.base.TerminationCondition.optimal)
-                elif relaxation_side == coramin.utils.RelaxationSide.OVER:
-                    m.aux.fix(min(pe.value(func(lb)), pe.value(func(ub))) - 1)
-                    res = opt.solve(m)
-                    self.assertEqual(res.termination_condition,
-                                     appsi.base.TerminationCondition.optimal)
+                    # make sure the original curve is feasible for the relaxation
+                    for _x in [float(i) for i in np.linspace(lb, ub, 10)]:
+                        m.x.fix(_x)
+                        m.aux.fix(pe.value(expr))
+                        res = opt.solve(m)
+                        self.assertEqual(res.termination_condition,
+                                         appsi.base.TerminationCondition.optimal)
+                        if relaxation_side == coramin.utils.RelaxationSide.UNDER:
+                            m.aux.fix(max(pe.value(func(lb)), pe.value(func(ub))) + 1)
+                            res = opt.solve(m)
+                            self.assertEqual(res.termination_condition,
+                                             appsi.base.TerminationCondition.optimal)
+                        elif relaxation_side == coramin.utils.RelaxationSide.OVER:
+                            m.aux.fix(min(pe.value(func(lb)), pe.value(func(ub))) - 1)
+                            res = opt.solve(m)
+                            self.assertEqual(res.termination_condition,
+                                             appsi.base.TerminationCondition.optimal)
 
-            # ensure the relaxation is exact at the bounds of x
-            m.aux.unfix()
-            del m.obj
-            m.obj = pe.Objective(expr=m.aux)
-            for _x in [lb, ub]:
-                m.x.fix(_x)
-                if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.UNDER}:
-                    m.obj.sense = pe.minimize
-                    res = opt.solve(m)
-                    self.assertEqual(res.termination_condition,
-                                     appsi.base.TerminationCondition.optimal)
-                    self.assertAlmostEqual(m.aux.value, pe.value(func(_x)))
-                if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.OVER}:
-                    m.obj.sense = pe.maximize
-                    res = opt.solve(m)
-                    self.assertEqual(res.termination_condition,
-                                     appsi.base.TerminationCondition.optimal)
-                    self.assertAlmostEqual(m.aux.value, pe.value(func(_x)))
+                    # ensure the relaxation is exact at the bounds of x
+                    m.aux.unfix()
+                    del m.obj
+                    m.obj = pe.Objective(expr=m.aux)
+                    for _x in [lb, ub]:
+                        m.x.fix(_x)
+                        if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.UNDER}:
+                            m.obj.sense = pe.minimize
+                            res = opt.solve(m)
+                            self.assertEqual(res.termination_condition,
+                                             appsi.base.TerminationCondition.optimal)
+                            self.assertAlmostEqual(m.aux.value, pe.value(func(_x)))
+                        if relaxation_side in {coramin.utils.RelaxationSide.BOTH, coramin.utils.RelaxationSide.OVER}:
+                            m.obj.sense = pe.maximize
+                            res = opt.solve(m)
+                            self.assertEqual(res.termination_condition,
+                                             appsi.base.TerminationCondition.optimal)
+                            self.assertAlmostEqual(m.aux.value, pe.value(func(_x)))
 
     def test_exp(self):
-        self.helper(func=pe.exp,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.exp,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.exp,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.exp, bounds_list=[(-1, 1)])
 
     def test_log(self):
-        self.helper(func=pe.log,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.log,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.log,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.log, bounds_list=[(0.5, 1.5)])
 
     def test_log10(self):
-        self.helper(func=pe.log10,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.log10,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.log10,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.log10, bounds_list=[(0.5, 1.5)])
 
     def test_log_of_linear(self):
-        self.helper(func=_log_of_linear,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=_log_of_linear,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=_log_of_linear,
-                    bounds_list=[(0.5, 1.5)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=_log_of_linear, bounds_list=[(0.5, 1.5)])
 
     def test_log_of_polynomial(self):
-        self.helper(func=_log_of_polynomial,
-                    bounds_list=[(0.1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=_log_of_polynomial,
-                    bounds_list=[(0.1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=_log_of_polynomial,
-                    bounds_list=[(0.1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=_log_of_polynomial, bounds_list=[(0.1, 2)])
+
+    def test_x_times_x(self):
+        self.helper(func=_x_times_x, bounds_list=[(0.1, 2)])
 
     def test_quadratic(self):
-        def quadratic_func(x):
-            return x**2
-        self.helper(func=quadratic_func,
-                    bounds_list=[(-1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=quadratic_func,
-                    bounds_list=[(-1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=quadratic_func,
-                    bounds_list=[(-1, 2)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=_quadratic, bounds_list=[(-1, 2)])
 
     def test_arctan(self):
-        self.helper(func=pe.atan,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.atan,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.atan,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.atan, bounds_list=[(-1, 1)])
 
     def test_sin(self):
-        self.helper(func=pe.sin,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.sin,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.sin,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.sin, bounds_list=[(-1, 1)])
 
     def test_cos(self):
-        self.helper(func=pe.cos,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.BOTH)
-        self.helper(func=pe.cos,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.UNDER)
-        self.helper(func=pe.cos,
-                    bounds_list=[(-1, 1)],
-                    relaxation_side=coramin.utils.RelaxationSide.OVER)
+        self.helper(func=pe.cos, bounds_list=[(-1, 1)])
+
+    def test_sqrt(self):
+        self.helper(func=_sqrt, bounds_list=[(0.5, 2)])
+
+    def test_sqrt2(self):
+        self.helper(func=pe.sqrt, bounds_list=[(0.5, 2)])
+
+    def test_variable_exp(self):
+        self.helper(func=_variable_exp, bounds_list=[(-2, 3)])
+
+    def test_cubic(self):
+        self.helper(func=_cubic, bounds_list=[(-2, 3), (-3, -1), (1, 3)])
+
+    def test_fractional_exp(self):
+        self.helper(func=_fractional_exp, bounds_list=[(0.5, 3)])
+
+    def test_pow_neg2(self):
+        self.helper(func=_pow_neg_2, bounds_list=[(0.5, 3), (-3, -0.5)])
+
+    def test_pow_neg3(self):
+        self.helper(func=_pow_neg_3, bounds_list=[(0.5, 3), (-3, -0.5)])
+
+    def test_pow_neg_point5(self):
+        self.helper(func=_pow_neg_point5, bounds_list=[(0.5, 3)])
+
+    def test_pow_neg_1point2(self):
+        self.helper(func=_pow_neg_1point2, bounds_list=[(0.5, 3)])
 
 
 class TestRepeatedTerms(unittest.TestCase):
