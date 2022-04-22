@@ -869,12 +869,6 @@ class MultiTree(Solver):
             if should_terminate:
                 break
 
-            vars_to_tighten = collect_vars_to_tighten(self._relaxation)
-            num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
-            should_terminate, reason = self._should_terminate()
-            if should_terminate:
-                break
-
             rel_res = self._solve_relaxation()
 
             should_terminate, reason = self._should_terminate()
