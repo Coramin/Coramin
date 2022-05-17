@@ -21,9 +21,9 @@ from pyomo.common.config import (
     ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt, NonNegativeFloat, InEnum
 )
 import logging
-from coramin.relaxations.auto_relax import relax, ConvexityEffort
+from coramin.relaxations.auto_relax import relax
 from coramin.relaxations.iterators import relaxation_data_objects
-from coramin.utils.coramin_enums import RelaxationSide
+from coramin.utils.coramin_enums import RelaxationSide, Effort, EigenValueBounder
 from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
@@ -68,7 +68,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("small_coef", ConfigValue(domain=NonNegativeFloat))
         self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
         self.declare("safety_tol", ConfigValue(domain=NonNegativeFloat))
-        self.declare("convexity_effort", ConfigValue(domain=InEnum(ConvexityEffort)))
+        self.declare("convexity_effort", ConfigValue(domain=InEnum(Effort)))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -84,7 +84,7 @@ class MultiTreeConfig(MIPSolverConfig):
         self.small_coef = 1e-10
         self.large_coef = 1e5
         self.safety_tol = 1e-10
-        self.convexity_effort = ConvexityEffort.medium
+        self.convexity_effort = Effort.high
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -665,12 +665,57 @@ class MultiTree(Solver):
         )
         tmp_name = unique_component_name(self._original_model, "all_vars")
         setattr(self._original_model, tmp_name, all_vars)
+
+        # this has to be 0 because the Multitree solver cannot use alpha-bb relaxations
+        max_vars_per_alpha_bb = 0
+        max_eigenvalue_for_alpha_bb = 0
+
+        if self.config.convexity_effort == Effort.none:
+            perform_expression_simplification = False
+            use_alpha_bb = False
+            eigenvalue_bounder = EigenValueBounder.Gershgorin
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.low:
+            perform_expression_simplification = False
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.Gershgorin
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.medium:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.GershgorinWithSimplification
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.high:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.LinearProgram
+            eigenvalue_opt = self.mip_solver.__class__()
+            eigenvalue_opt.config = self.mip_solver.config()
+            eigenvalue_opt.update_config = self.mip_solver.update_config()
+            # TODO: need to update the solver options
+        else:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.Global
+            mip_solver = self.mip_solver.__class__()
+            mip_solver.config = self.mip_solver.config()
+            mip_solver.update_config = self.mip_solver.update_config()
+            nlp_solver = self.nlp_solver.__class__()
+            nlp_solver.config = self.nlp_solver.config()
+            nlp_solver.update_config = self.nlp_solver.update_config()
+            eigenvalue_opt = MultiTree(mip_solver=mip_solver, nlp_solver=nlp_solver)
+            eigenvalue_opt.config = self.config()
+            eigenvalue_opt.config.convexity_effort = min(self.config.convexity_effort, Effort.medium)
+
         self._nlp = relax(
             model=self._original_model,
             in_place=False,
             use_fbbt=True,
             fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 5},
-            convexity_effort=self.config.convexity_effort
+            perform_expression_simplification=perform_expression_simplification,
+            use_alpha_bb=use_alpha_bb,
+            eigenvalue_bounder=eigenvalue_bounder,
+            eigenvalue_opt=eigenvalue_opt,
         )
         new_vars = getattr(self._nlp, tmp_name)
         self._nlp_to_orig_map = pe.ComponentMap(zip(new_vars, all_vars))
