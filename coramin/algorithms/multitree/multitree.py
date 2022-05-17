@@ -447,12 +447,17 @@ class MultiTree(Solver):
             self._nlp_tightener.perform_fbbt(self._nlp)
             proven_infeasible = False
         except InfeasibleConstraintException:
-            logger.info("NLP proven infeasiblee with FBBT")
-            nlp_res = Results()
-            nlp_res.termination_condition = TerminationCondition.infeasible
+            # the original NLP may still be feasible
             proven_infeasible = True
 
-        if not proven_infeasible:
+        if proven_infeasible:
+            self.nlp_solver.config.time_limit = self._remaining_time
+            nlp_res = self.nlp_solver.solve(self._original_model)
+            if nlp_res.best_feasible_objective is not None:
+                nlp_res.solution_loader.load_vars()
+                for nlp_v, orig_v in self._nlp_to_orig_map.items():
+                    nlp_v.set_value(orig_v.value, skip_validation=True)
+        else:
             for v in ComponentSet(
                 self._nlp.component_data_objects(pe.Var, descend_into=True)
             ):
@@ -691,7 +696,6 @@ class MultiTree(Solver):
             eigenvalue_bounder = EigenValueBounder.LinearProgram
             eigenvalue_opt = self.mip_solver.__class__()
             eigenvalue_opt.config = self.mip_solver.config()
-            eigenvalue_opt.update_config = self.mip_solver.update_config()
             # TODO: need to update the solver options
         else:
             perform_expression_simplification = True
@@ -699,10 +703,8 @@ class MultiTree(Solver):
             eigenvalue_bounder = EigenValueBounder.Global
             mip_solver = self.mip_solver.__class__()
             mip_solver.config = self.mip_solver.config()
-            mip_solver.update_config = self.mip_solver.update_config()
             nlp_solver = self.nlp_solver.__class__()
             nlp_solver.config = self.nlp_solver.config()
-            nlp_solver.update_config = self.nlp_solver.update_config()
             eigenvalue_opt = MultiTree(mip_solver=mip_solver, nlp_solver=nlp_solver)
             eigenvalue_opt.config = self.config()
             eigenvalue_opt.config.convexity_effort = min(self.config.convexity_effort, Effort.medium)
@@ -716,6 +718,8 @@ class MultiTree(Solver):
             use_alpha_bb=use_alpha_bb,
             eigenvalue_bounder=eigenvalue_bounder,
             eigenvalue_opt=eigenvalue_opt,
+            max_vars_per_alpha_bb=max_vars_per_alpha_bb,
+            max_eigenvalue_for_alpha_bb=max_eigenvalue_for_alpha_bb,
         )
         new_vars = getattr(self._nlp, tmp_name)
         self._nlp_to_orig_map = pe.ComponentMap(zip(new_vars, all_vars))
