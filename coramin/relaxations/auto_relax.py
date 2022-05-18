@@ -29,6 +29,7 @@ from coramin.utils.pyomo_utils import simplify_expr
 from .hessian import Hessian
 from typing import MutableMapping, Tuple, Union, Optional
 from pyomo.core.base.block import _BlockData
+from .iterators import relaxation_data_objects
 
 
 logger = logging.getLogger(__name__)
@@ -1302,7 +1303,7 @@ def relax(
             parent_block.del_component(c)
 
     if use_fbbt:
-        for _aux_var, relaxation in aux_var_map.values():
+        for relaxation in relaxation_data_objects(m, descend_into=True, active=True):
             relaxation.rebuild(build_nonlinear_constraint=True)
 
         it = appsi.fbbt.IntervalTightener()
@@ -1311,11 +1312,11 @@ def relax(
         it.config.deactivate_satisfied_constraints = False
         it.perform_fbbt(m)
 
-        for _aux_var, relaxation in aux_var_map.values():
+        for relaxation in relaxation_data_objects(m, descend_into=True, active=True):
             relaxation.use_linear_relaxation = True
             relaxation.rebuild()
     else:
-        for _aux_var, relaxation in aux_var_map.values():
+        for relaxation in relaxation_data_objects(m, descend_into=True, active=True):
             relaxation.use_linear_relaxation = True
             relaxation.rebuild()
 
