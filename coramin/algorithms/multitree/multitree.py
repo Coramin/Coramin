@@ -451,12 +451,24 @@ class MultiTree(Solver):
             proven_infeasible = True
 
         if proven_infeasible:
-            self.nlp_solver.config.time_limit = self._remaining_time
-            nlp_res = self.nlp_solver.solve(self._original_model)
-            if nlp_res.best_feasible_objective is not None:
-                nlp_res.solution_loader.load_vars()
-                for nlp_v, orig_v in self._nlp_to_orig_map.items():
-                    nlp_v.set_value(orig_v.value, skip_validation=True)
+            any_unfixed_vars = False
+            for v in self._original_model.component_data_objects(
+                pe.Var, descend_into=True
+            ):
+                if not v.fixed:
+                    any_unfixed_vars = True
+                    break
+            if any_unfixed_vars:
+                self.nlp_solver.config.time_limit = self._remaining_time
+                self._original_model.pprint()
+                nlp_res = self.nlp_solver.solve(self._original_model)
+                if nlp_res.best_feasible_objective is not None:
+                    nlp_res.solution_loader.load_vars()
+                    for nlp_v, orig_v in self._nlp_to_orig_map.items():
+                        nlp_v.set_value(orig_v.value, skip_validation=True)
+                else:
+                    nlp_res = Results()
+                    nlp_res.termination_condition = TerminationCondition.infeasible
         else:
             for v in ComponentSet(
                 self._nlp.component_data_objects(pe.Var, descend_into=True)
