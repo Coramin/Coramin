@@ -7,7 +7,8 @@ from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.expr.numeric_expr import ExpressionBase
 from pyomo.core.expr.visitor import identify_variables
 from pyomo.contrib import appsi
-from pyomo.core.base.param import ScalarParam
+from pyomo.core.base.param import ScalarParam, IndexedParam
+from pyomo.core.base.set import OrderedScalarSet
 
 
 @declare_custom_block(name='AlphaBBRelaxation')
@@ -20,6 +21,13 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         self._alphabb_rhs: Optional[ExpressionBase] = None
         self._hessian: Optional[Hessian] = None
         self._alpha: Optional[ScalarParam] = None
+        self._var_set: Optional[OrderedScalarSet] = None
+        self._lb_params: Optional[IndexedParam] = None
+        self._ub_params: Optional[IndexedParam] = None
+
+    @property
+    def hessian(self):
+        return self._hessian
 
     @property
     def _aux_var(self):
@@ -52,15 +60,6 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     def _get_expr_for_oa(self):
         return self._alphabb_rhs
 
-    def _remove_relaxation(self):
-        del self._alpha, self._alphabb_rhs
-        self._alpha = None
-        self._alphabb_rhs = None
-
-    def remove_relaxation(self):
-        super().remove_relaxation()
-        self._remove_relaxation()
-
     def set_input(
         self,
         aux_var: _GeneralVarData,
@@ -74,6 +73,11 @@ class AlphaBBRelaxationData(BaseRelaxationData):
         eigenvalue_opt: Optional[appsi.base.Solver] = None,
         hessian: Optional[Hessian] = None,
     ):
+        del self._alpha, self._alphabb_rhs, self._var_set, self._lb_params
+        del self._ub_params
+        self._alpha, self._alphabb_rhs, self._var_set = None, None, None
+        self._lb_params, self._ub_params = None, None
+        self._relaxation_side = relaxation_side
         super().set_input(
             relaxation_side=relaxation_side,
             use_linear_relaxation=use_linear_relaxation,
@@ -139,13 +143,22 @@ class AlphaBBRelaxationData(BaseRelaxationData):
             alpha = max(0, 0.5*self._hessian.get_maximum_eigenvalue())
             alpha = -alpha
         if self._alpha is None:
+            del self._alpha, self._alphabb_rhs, self._var_set
+            del self._lb_params, self._ub_params
             self._alpha = ScalarParam(mutable=True)
-            self._alphabb_rhs = (
-                self.get_rhs_expr()
-                + self._alpha
-                * sum((x - x.lb) * (x - x.ub) for x in self.get_rhs_vars())
-            )
+            self._var_set = OrderedScalarSet(initialize=list(range(len(self._xs))))
+            self._lb_params = IndexedParam(self._var_set, mutable=True)
+            self._ub_params = IndexedParam(self._var_set, mutable=True)
+            alpha_sum = 0
+            for ndx, v in enumerate(self._xs):
+                p_lb = self._lb_params[ndx]
+                p_ub = self._ub_params[ndx]
+                alpha_sum += (v - p_lb) * (v - p_ub)
+            self._alphabb_rhs = self.get_rhs_expr() + self._alpha * alpha_sum
         self._alpha.value = alpha
+        for ndx, v in enumerate(self._xs):
+            self._lb_params[ndx].value = v.lb
+            self._ub_params[ndx].value = v.ub
 
         super().rebuild(build_nonlinear_constraint=build_nonlinear_constraint,
                         ensure_oa_at_vertices=ensure_oa_at_vertices)
