@@ -19,7 +19,11 @@ class TestAlphaBBRelaxation(unittest.TestCase):
 
         model.obj = pe.Objective(expr=model.w)
         model.abb = AlphaBBRelaxation()
-        model.abb.build(aux_var=model.w, f_x_expr=model.f_x)
+        model.abb.build(
+            aux_var=model.w, f_x_expr=model.f_x,
+            relaxation_side=coramin.RelaxationSide.UNDER,
+            eigenvalue_bounder=coramin.EigenValueBounder.GershgorinWithSimplification
+        )
 
     def test_nonlinear(self):
         model = self.model.clone()

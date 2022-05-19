@@ -135,6 +135,8 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     def relaxation_side(self, val):
         if val != self.relaxation_side:
             raise ValueError('Cannot change the relaxation side of an AlphaBBRelaxation')
+        if val == RelaxationSide.BOTH:
+            raise ValueError('AlphaBBRelaxation only supports relaxation sides of UNDER or OVER, not BOTH.')
 
     def rebuild(self, build_nonlinear_constraint=False, ensure_oa_at_vertices=True):
         if self.relaxation_side == RelaxationSide.UNDER:

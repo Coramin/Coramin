@@ -1202,7 +1202,7 @@ def relax(
             counter = RelaxationCounter()
             counter_dict[parent_block] = counter
 
-        repn = generate_standard_repn(c.body, quadratic=False)
+        repn = generate_standard_repn(c.body, quadratic=False, compute_values=False)
         assert len(repn.quadratic_vars) == 0
         assert repn.nonlinear_expr is not None
         if len(repn.linear_vars) > 0:
@@ -1266,7 +1266,7 @@ def relax(
         if not hasattr(parent_block, 'aux_objectives'):
             parent_block.aux_objectives = pe.ObjectiveList()
 
-        repn = generate_standard_repn(c.expr, quadratic=False)
+        repn = generate_standard_repn(c.expr, quadratic=False, compute_values=False)
         assert len(repn.quadratic_vars) == 0
         assert repn.nonlinear_expr is not None
         if len(repn.linear_vars) > 0:

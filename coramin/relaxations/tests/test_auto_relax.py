@@ -9,8 +9,7 @@ import numpy as np
 from pyomo.core.base.param import _ParamData, ScalarParam
 from pyomo.core.expr.sympy_tools import sympyify_expression
 from pyomo.contrib import appsi
-from coramin.utils import RelaxationSide
-from coramin.relaxations.auto_relax import ConvexityEffort
+from coramin.utils import RelaxationSide, Effort, EigenValueBounder
 
 
 class TestAutoRelax(unittest.TestCase):
@@ -21,7 +20,7 @@ class TestAutoRelax(unittest.TestCase):
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x*m.y == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -52,7 +51,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c1 = pe.Constraint(expr=m.z - m.x*m.y == 0)
         m.c2 = pe.Constraint(expr=m.v - 3*m.x*m.y == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -89,7 +88,7 @@ class TestAutoRelax(unittest.TestCase):
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x*m.y*3 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -119,7 +118,7 @@ class TestAutoRelax(unittest.TestCase):
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x*m.x == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -152,7 +151,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**2 + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**2 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -192,7 +191,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**3 + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**3 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -234,7 +233,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**3 + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**3 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -276,7 +275,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**3 + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**3 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         # this problem should turn into
         #
@@ -333,7 +332,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -376,7 +375,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -419,7 +418,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -462,7 +461,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -505,7 +504,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -548,7 +547,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -591,7 +590,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=m.x**m.p + m.y + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*m.x**m.p == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         # This model should be relaxed to
         #
@@ -649,7 +648,7 @@ class TestAutoRelax(unittest.TestCase):
         m.x = pe.Var()
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z + pe.sqrt(2*pe.log(m.x)) <= 1)
-        coramin.relaxations.relax(m, in_place=True, use_fbbt=False)
+        coramin.relaxations.relax(m, in_place=True, use_fbbt=False, use_alpha_bb=False)
         rels = list(coramin.relaxations.relaxation_data_objects(m, descend_into=True, active=True, sort=True))
         self.assertEqual(len(rels), 2)
         rel0 = m.relaxations.rel0  # log
@@ -675,7 +674,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=pe.exp(m.x*m.y) + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*pe.exp(m.x*m.y) == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -727,7 +726,7 @@ class TestAutoRelax(unittest.TestCase):
         m.c = pe.Constraint(expr=pe.log(m.x*m.y) + m.z == 0)
         m.c2 = pe.Constraint(expr=m.w - 3*pe.log(m.x*m.y) == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -776,7 +775,7 @@ class TestAutoRelax(unittest.TestCase):
         m.y = pe.Var(bounds=(1, 2))
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x/m.y == 0)
-        rel = coramin.relaxations.relax(m, in_place=True)
+        rel = coramin.relaxations.relax(m, in_place=True, use_alpha_bb=False)
         self.assertIs(m, rel)
         relaxations = list(coramin.relaxations.relaxation_data_objects(m))
         constraints = list(coramin.relaxations.nonrelaxation_component_data_objects(m, ctype=pe.Constraint))
@@ -804,7 +803,7 @@ class TestAutoRelax(unittest.TestCase):
         m.z = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x*m.y/2 == 0)
 
-        rel = coramin.relaxations.relax(m)
+        rel = coramin.relaxations.relax(m, use_alpha_bb=False)
 
         self.assertTrue(hasattr(rel, 'aux_cons'))
         self.assertTrue(hasattr(rel, 'aux_vars'))
@@ -836,7 +835,7 @@ class TestAutoRelax(unittest.TestCase):
         m.w = pe.Var()
         m.c = pe.Constraint(expr=m.z - m.x/m.y == 0)
         m.c2 = pe.Constraint(expr=m.w - m.x/m.y == 0)
-        rel = coramin.relaxations.relax(m, in_place=True)
+        rel = coramin.relaxations.relax(m, in_place=True, use_alpha_bb=False)
         self.assertIs(m, rel)
         relaxations = list(coramin.relaxations.relaxation_data_objects(m))
         constraints = list(coramin.relaxations.nonrelaxation_component_data_objects(m, ctype=pe.Constraint))
@@ -916,8 +915,12 @@ class TestUnivariate(unittest.TestCase):
         for relaxation_side in [
             RelaxationSide.UNDER, RelaxationSide.OVER, RelaxationSide.BOTH
         ]:
-            for convexity_effort in [
-                ConvexityEffort.none, ConvexityEffort.medium, ConvexityEffort.high
+            for simplification, use_alpha_bb, eigenvalue_bounder in [
+                (True, True, EigenValueBounder.Gershgorin),
+                (True, True, EigenValueBounder.GershgorinWithSimplification),
+                (False, True, EigenValueBounder.GershgorinWithSimplification),
+                (False, False, None),
+                (True, True, EigenValueBounder.LinearProgram),
             ]:
                 for lb, ub in bounds_list:
                     m = pe.ConcreteModel()
@@ -931,7 +934,12 @@ class TestUnivariate(unittest.TestCase):
                     elif relaxation_side == coramin.utils.RelaxationSide.OVER:
                         m.c = pe.Constraint(expr=m.aux <= expr)
                     coramin.relaxations.relax(
-                        m, in_place=True, convexity_effort=convexity_effort
+                        m,
+                        in_place=True,
+                        perform_expression_simplification=simplification,
+                        use_alpha_bb=use_alpha_bb,
+                        eigenvalue_bounder=eigenvalue_bounder,
+                        eigenvalue_opt=appsi.solvers.Gurobi(),
                     )
                     opt = appsi.solvers.Gurobi()
                     all_vars = list(m.component_data_objects(pe.Var, descend_into=True))
@@ -972,7 +980,7 @@ class TestUnivariate(unittest.TestCase):
                             res = opt.solve(m)
                             self.assertEqual(res.termination_condition,
                                              appsi.base.TerminationCondition.optimal)
-                            self.assertAlmostEqual(m.aux.value, pe.value(func(_x)))
+                            self.assertAlmostEqual(m.aux.value, pe.value(func(_x)), 5)
 
     def test_exp(self):
         self.helper(func=pe.exp, bounds_list=[(-1, 1)])
@@ -1040,7 +1048,7 @@ class TestRepeatedTerms(unittest.TestCase):
         m.aux2 = pe.Var()
         m.c1 = pe.Constraint(expr=m.aux1 <= 2 * func(m.x) + 3)
         m.c2 = pe.Constraint(expr=m.aux2 >= 3 * func(m.x) + 2)
-        coramin.relaxations.relax(m, in_place=True)
+        coramin.relaxations.relax(m, in_place=True, use_alpha_bb=False)
         rels = list(coramin.relaxations.relaxation_data_objects(m))
         self.assertEqual(len(rels), 1)
         r = rels[0]
@@ -1078,7 +1086,7 @@ class TestDegree0(unittest.TestCase):
         m.p = pe.Param(mutable=True, initialize=param_val)
         m.c = pe.Constraint(expr=m.aux == func(m.p) * m.x**2)
         self.assertIn(m.p, ComponentSet(identify_components(m.c.body, [_ParamData, ScalarParam])))
-        coramin.relaxations.relax(m, in_place=True)
+        coramin.relaxations.relax(m, in_place=True, use_alpha_bb=False)
         rels = list(coramin.relaxations.relaxation_data_objects(m))
         self.assertEqual(len(rels), 1)
         r = rels[0]
