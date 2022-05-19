@@ -51,10 +51,10 @@ class AlphaBBRelaxationData(BaseRelaxationData):
     def is_rhs_concave(self):
         return self._hessian.get_maximum_eigenvalue() <= 0
 
-    def _has_convex_underestimator(self):
+    def has_convex_underestimator(self):
         return self.relaxation_side == RelaxationSide.UNDER
 
-    def _has_concave_overestimator(self):
+    def has_concave_overestimator(self):
         return self.relaxation_side == RelaxationSide.OVER
 
     def _get_expr_for_oa(self):

@@ -209,9 +209,9 @@ class BaseRelaxationData(_BlockData):
         self._nonlinear = None
 
     def _has_a_convex_side(self):
-        if self._has_convex_underestimator() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
+        if self.has_convex_underestimator() and self.relaxation_side in {RelaxationSide.UNDER, RelaxationSide.BOTH}:
             return True
-        if self._has_concave_overestimator() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
+        if self.has_concave_overestimator() and self.relaxation_side in {RelaxationSide.OVER, RelaxationSide.BOTH}:
             return True
         return False
 
@@ -267,11 +267,11 @@ class BaseRelaxationData(_BlockData):
                 else:
                     if self._nonlinear is None:
                         del self._nonlinear
-                        if self._has_convex_underestimator():
-                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() >= self._get_expr_for_oa())
+                        if self.has_convex_underestimator():
+                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() >= self._get_expr_for_oa() - self.safety_tol)
                         else:
-                            assert self._has_concave_overestimator()
-                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() <= self._get_expr_for_oa())
+                            assert self.has_concave_overestimator()
+                            self._nonlinear = pe.Constraint(expr=self.get_aux_var() <= self._get_expr_for_oa() + self.safety_tol)
 
     def vars_with_bounds_in_relaxation(self):
         """
@@ -336,10 +336,10 @@ class BaseRelaxationData(_BlockData):
         """
         raise NotImplementedError('This method should be implemented in the derived class.')
 
-    def _has_convex_underestimator(self):
+    def has_convex_underestimator(self):
         return self.is_rhs_convex()
 
-    def _has_concave_overestimator(self):
+    def has_concave_overestimator(self):
         return self.is_rhs_concave()
 
     @property
@@ -412,10 +412,10 @@ class BaseRelaxationData(_BlockData):
     def _add_oa_cut(self, pt_tuple: Tuple[float, ...], oa_cut: _OACut) -> Optional[_GeneralConstraintData]:
         if self._nonlinear is not None or self._original_constraint is not None:
             raise ValueError('Can only add an OA cut when using a linear relaxation')
-        if self._has_convex_underestimator():
+        if self.has_convex_underestimator():
             rel_side = RelaxationSide.UNDER
         else:
-            assert self._has_concave_overestimator()
+            assert self.has_concave_overestimator()
             rel_side = RelaxationSide.OVER
         cut_info = oa_cut.update(var_vals=pt_tuple, relaxation_side=rel_side,
                                  too_small=self.small_coef, too_large=self.large_coef,
@@ -427,7 +427,7 @@ class BaseRelaxationData(_BlockData):
                 del self._cuts[oa_cut]
         else:
             if oa_cut not in self._cuts:
-                if self._has_convex_underestimator():
+                if self.has_convex_underestimator():
                     self._cuts[oa_cut] = self.get_aux_var() >= oa_cut.cut_expr
                 else:
                     self._cuts[oa_cut] = self.get_aux_var() <= oa_cut.cut_expr
@@ -541,7 +541,7 @@ class BaseRelaxationData(_BlockData):
                 except (OverflowError, ZeroDivisionError, ValueError):
                     rhs_val = None
                 if rhs_val is not None:
-                    if self._has_convex_underestimator():
+                    if self.has_convex_underestimator():
                         viol = rhs_val - self.get_aux_var().value
                     else:
                         viol = self.get_aux_var().value - rhs_val
