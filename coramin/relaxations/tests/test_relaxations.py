@@ -429,7 +429,7 @@ class TestRelaxationBasics(unittest.TestCase):
         rel.push_oa_points('foo')
         rel.clear_oa_points()
         rel.rebuild()
-        if rel.is_rhs_convex() or rel.is_rhs_concave():
+        if rel.has_convex_underestimator() or rel.has_concave_overestimator():
             self.assertEqual(len(rel._cuts), 2)
         else:
             self.assertIsNone(rel._cuts)
@@ -455,38 +455,38 @@ class TestRelaxationBasics(unittest.TestCase):
                     rel.get_aux_var().value = pe.value(rhs_expr) + offset
                     rel.add_cut(keep_cut=keep_cut, check_violation=True)
                 self.valid_relaxation_helper(m, rel, rhs_expr, num_pts, supports_underestimator, supports_overestimator)
-                if rel.is_rhs_convex():
+                if rel.has_convex_underestimator():
                     if offset < 0:
                         self.assertEqual(len(rel._cuts), len(sample_points))
                         if check_equal_at_points:
                             self.equal_at_points_helper(m, rel, rhs_expr, sample_points, True, False)
                     else:
                         self.assertEqual(len(rel._cuts), 2)
-                if rel.is_rhs_concave():
+                if rel.has_concave_overestimator():
                     if offset > 0:
                         self.assertEqual(len(rel._cuts), len(sample_points))
                         if check_equal_at_points:
                             self.equal_at_points_helper(m, rel, rhs_expr, sample_points, False, True)
                     else:
                         self.assertEqual(len(rel._cuts), 2)
-                if rel.is_rhs_convex() or rel.is_rhs_concave():
+                if rel.has_convex_underestimator() or rel.has_concave_overestimator():
                     cuts_len = len(rel._cuts)
                 else:
                     cuts_len = None
                 rel.rebuild()
                 if keep_cut:
-                    if rel.is_rhs_convex() or rel.is_rhs_concave():
+                    if rel.has_convex_underestimator() or rel.has_concave_overestimator():
                         self.assertEqual(cuts_len, len(rel._cuts))
                     else:
                         self.assertIsNone(rel._cuts)
                 else:
-                    if rel.is_rhs_convex() or rel.is_rhs_concave():
+                    if rel.has_convex_underestimator() or rel.has_concave_overestimator():
                         self.assertEqual(len(rel._cuts), 2)
                     else:
                         self.assertIsNone(rel._cuts)
                 rel.clear_oa_points()
                 rel.rebuild()
-                if rel.is_rhs_convex() or rel.is_rhs_concave():
+                if rel.has_convex_underestimator() or rel.has_concave_overestimator():
                     self.assertEqual(len(rel._cuts), 2)
                 else:
                     self.assertIsNone(rel._cuts)
@@ -869,11 +869,14 @@ class TestRelaxationBasics(unittest.TestCase):
     def test_alpha_bb1(self):
         m = self.get_base_pyomo_model()
         m.rel = coramin.relaxations.AlphaBBRelaxation()
-        m.rel.build(aux_var=m.z, f_x_expr=m.x*m.y)
+        m.rel.build(
+            aux_var=m.z, f_x_expr=m.x*m.y, relaxation_side=coramin.RelaxationSide.UNDER,
+            eigenvalue_opt=appsi.solvers.Gurobi(),
+        )
         e = m.x*m.y
         self.options_switching_helper(m.rel)
         self.valid_relaxation_helper(m, m.rel, e, 10, True, False)
-        self.util_methods_helper(m.rel, e, m.z, True, False, True, False)
+        self.util_methods_helper(m.rel, e, m.z, False, False, True, False)
         with self.assertRaises(ValueError):
             m.rel.relaxation_side = coramin.RelaxationSide.OVER
         with self.assertRaises(ValueError):
@@ -890,10 +893,14 @@ class TestRelaxationBasics(unittest.TestCase):
     def test_alpha_bb2(self):
         m = self.get_base_pyomo_model()
         m.rel = coramin.relaxations.AlphaBBRelaxation()
-        m.rel.build(aux_var=m.z, f_x_expr=-m.x**2 - m.y**2)
+        m.rel.build(
+            aux_var=m.z, f_x_expr=-m.x**2 - m.y**2,
+            relaxation_side=coramin.RelaxationSide.UNDER,
+            eigenvalue_opt=appsi.solvers.Gurobi(),
+        )
         e = -m.x**2 - m.y**2
         self.valid_relaxation_helper(m, m.rel, e, 10, True, False)
-        self.util_methods_helper(m.rel, e, m.z, True, False, True, False)
+        self.util_methods_helper(m.rel, e, m.z, False, True, True, False)
         with self.assertRaises(ValueError):
             m.rel.relaxation_side = coramin.RelaxationSide.OVER
         with self.assertRaises(ValueError):
@@ -912,7 +919,11 @@ class TestRelaxationBasics(unittest.TestCase):
     def test_alpha_bb3(self):
         m = self.get_base_pyomo_model()
         m.rel = coramin.relaxations.AlphaBBRelaxation()
-        m.rel.build(aux_var=m.z, f_x_expr=m.x**2 + m.y**2)
+        m.rel.build(
+            aux_var=m.z, f_x_expr=m.x**2 + m.y**2,
+            relaxation_side=coramin.RelaxationSide.UNDER,
+            eigenvalue_opt=appsi.solvers.Gurobi(),
+        )
         e = m.x**2 + m.y**2
         self.valid_relaxation_helper(m, m.rel, e, 10, True, False)
         self.util_methods_helper(m.rel, e, m.z, True, False, True, False)

@@ -17,11 +17,13 @@ from pyomo.contrib.appsi.base import (
 )
 from pyomo.contrib import appsi
 from typing import Tuple, Optional, MutableMapping, Sequence
-from pyomo.common.config import ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt
+from pyomo.common.config import (
+    ConfigValue, NonNegativeInt, PositiveFloat, PositiveInt, NonNegativeFloat, InEnum
+)
 import logging
 from coramin.relaxations.auto_relax import relax
 from coramin.relaxations.iterators import relaxation_data_objects
-from coramin.utils.coramin_enums import RelaxationSide
+from coramin.utils.coramin_enums import RelaxationSide, Effort, EigenValueBounder
 from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
@@ -63,6 +65,10 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("root_obbt_max_iter", ConfigValue(domain=NonNegativeInt))
         self.declare("show_obbt_progress_bar", ConfigValue(domain=bool))
         self.declare("integer_tolerance", ConfigValue(domain=PositiveFloat))
+        self.declare("small_coef", ConfigValue(domain=NonNegativeFloat))
+        self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
+        self.declare("safety_tol", ConfigValue(domain=NonNegativeFloat))
+        self.declare("convexity_effort", ConfigValue(domain=InEnum(Effort)))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -75,6 +81,10 @@ class MultiTreeConfig(MIPSolverConfig):
         self.max_iter = 1000
         self.root_obbt_max_iter = 1000
         self.show_obbt_progress_bar = False
+        self.small_coef = 1e-10
+        self.large_coef = 1e5
+        self.safety_tol = 1e-10
+        self.convexity_effort = Effort.high
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -437,12 +447,29 @@ class MultiTree(Solver):
             self._nlp_tightener.perform_fbbt(self._nlp)
             proven_infeasible = False
         except InfeasibleConstraintException:
-            logger.info("NLP proven infeasiblee with FBBT")
-            nlp_res = Results()
-            nlp_res.termination_condition = TerminationCondition.infeasible
+            # the original NLP may still be feasible
             proven_infeasible = True
 
-        if not proven_infeasible:
+        if proven_infeasible:
+            any_unfixed_vars = False
+            for v in self._original_model.component_data_objects(
+                pe.Var, descend_into=True
+            ):
+                if not v.fixed:
+                    any_unfixed_vars = True
+                    break
+            if any_unfixed_vars:
+                self.nlp_solver.config.time_limit = self._remaining_time
+                self._original_model.pprint()
+                nlp_res = self.nlp_solver.solve(self._original_model)
+                if nlp_res.best_feasible_objective is not None:
+                    nlp_res.solution_loader.load_vars()
+                    for nlp_v, orig_v in self._nlp_to_orig_map.items():
+                        nlp_v.set_value(orig_v.value, skip_validation=True)
+                else:
+                    nlp_res = Results()
+                    nlp_res.termination_condition = TerminationCondition.infeasible
+        else:
             for v in ComponentSet(
                 self._nlp.component_data_objects(pe.Var, descend_into=True)
             ):
@@ -474,6 +501,8 @@ class MultiTree(Solver):
                     nlp_res = self.nlp_solver.solve(self._original_model)
                     if nlp_res.best_feasible_objective is not None:
                         nlp_res.solution_loader.load_vars()
+                        for nlp_v, orig_v in self._nlp_to_orig_map.items():
+                            nlp_v.value = orig_v.value
             else:
                 nlp_obj = get_objective(self._nlp)
                 # there should not be any active constraints
@@ -653,11 +682,56 @@ class MultiTree(Solver):
         )
         tmp_name = unique_component_name(self._original_model, "all_vars")
         setattr(self._original_model, tmp_name, all_vars)
+
+        # this has to be 0 because the Multitree solver cannot use alpha-bb relaxations
+        max_vars_per_alpha_bb = 0
+        max_eigenvalue_for_alpha_bb = 0
+
+        if self.config.convexity_effort == Effort.none:
+            perform_expression_simplification = False
+            use_alpha_bb = False
+            eigenvalue_bounder = EigenValueBounder.Gershgorin
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.low:
+            perform_expression_simplification = False
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.Gershgorin
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.medium:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.GershgorinWithSimplification
+            eigenvalue_opt = None
+        elif self.config.convexity_effort <= Effort.high:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.LinearProgram
+            eigenvalue_opt = self.mip_solver.__class__()
+            eigenvalue_opt.config = self.mip_solver.config()
+            # TODO: need to update the solver options
+        else:
+            perform_expression_simplification = True
+            use_alpha_bb = True
+            eigenvalue_bounder = EigenValueBounder.Global
+            mip_solver = self.mip_solver.__class__()
+            mip_solver.config = self.mip_solver.config()
+            nlp_solver = self.nlp_solver.__class__()
+            nlp_solver.config = self.nlp_solver.config()
+            eigenvalue_opt = MultiTree(mip_solver=mip_solver, nlp_solver=nlp_solver)
+            eigenvalue_opt.config = self.config()
+            eigenvalue_opt.config.convexity_effort = min(self.config.convexity_effort, Effort.medium)
+
         self._nlp = relax(
             model=self._original_model,
             in_place=False,
             use_fbbt=True,
             fbbt_options={"deactivate_satisfied_constraints": True, "max_iter": 5},
+            perform_expression_simplification=perform_expression_simplification,
+            use_alpha_bb=use_alpha_bb,
+            eigenvalue_bounder=eigenvalue_bounder,
+            eigenvalue_opt=eigenvalue_opt,
+            max_vars_per_alpha_bb=max_vars_per_alpha_bb,
+            max_eigenvalue_for_alpha_bb=max_eigenvalue_for_alpha_bb,
         )
         new_vars = getattr(self._nlp, tmp_name)
         self._nlp_to_orig_map = pe.ComponentMap(zip(new_vars, all_vars))
@@ -682,6 +756,9 @@ class MultiTree(Solver):
         delattr(self._relaxation, tmp_name)
 
         for b in relaxation_data_objects(self._relaxation, descend_into=True, active=True):
+            b.small_coef = self.config.small_coef
+            b.large_coef = self.config.large_coef
+            b.safety_tol = self.config.safety_tol
             b.rebuild()
 
     def _get_nlp_specs_from_rel(self):
@@ -852,7 +929,7 @@ class MultiTree(Solver):
             should_terminate, reason = self._should_terminate()
             if should_terminate:
                 break
-            
+
             rel_res = self._solve_relaxation()
 
             should_terminate, reason = self._should_terminate()

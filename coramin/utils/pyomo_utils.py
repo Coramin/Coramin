@@ -1,4 +1,6 @@
 import pyomo.environ as pe
+from pyomo.core.expr.sympy_tools import sympyify_expression, sympy2pyomo_expression
+from pyomo.core.expr.numvalue import is_fixed
 
 
 def get_objective(m):
@@ -19,3 +21,12 @@ def get_objective(m):
             raise ValueError('Found multiple active objectives')
         obj = o
     return obj
+
+
+def simplify_expr(expr):
+    if is_fixed(expr):
+        return pe.value(expr)
+    else:
+        om, se = sympyify_expression(expr)
+        se = se.simplify()
+        return sympy2pyomo_expression(se, om)

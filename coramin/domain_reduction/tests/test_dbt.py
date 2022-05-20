@@ -11,7 +11,7 @@ from pyomo.core.expr.visitor import identify_variables
 from pyomo.core.expr import differentiate
 from egret.thirdparty.get_pglib_opf import get_pglib_opf
 from egret.data.model_data import ModelData
-from egret.models.acopf import create_rsv_acopf_model
+from egret.models.acopf import create_psv_acopf_model
 import os
 from coramin.utils.pyomo_utils import get_objective
 import filecmp
@@ -421,17 +421,26 @@ class TestNumCons(unittest.TestCase):
 
 class TestDecompose(unittest.TestCase):
     def helper(self, case, min_partition_ratio, expected_termination):
+        """
+        we rely on other tests to make sure the relaxation is constructed
+        correctly. This test just checks the decomposition.
+        """
+
         test_dir = os.path.dirname(os.path.abspath(__file__))
         pglib_dir = os.path.join(test_dir, 'pglib-opf-master')
         if not os.path.isdir(pglib_dir):
             get_pglib_opf(download_dir=test_dir)
         md = ModelData.read(filename=os.path.join(pglib_dir, case))
-        m, scaled_md = create_rsv_acopf_model(md)
+        m, scaled_md = create_psv_acopf_model(md)
+        opt = pe.SolverFactory('ipopt')
+        res = opt.solve(m, tee=True)
+
         relaxed_m = coramin.relaxations.relax(m,
                                               in_place=False,
                                               use_fbbt=True,
                                               fbbt_options={'deactivate_satisfied_constraints': True,
-                                                            'max_iter': 2})
+                                                            'max_iter': 2},
+                                              use_alpha_bb=False)
         (decomposed_m,
          component_map,
          termination_reason) = decompose_model(model=relaxed_m,
@@ -439,16 +448,16 @@ class TestDecompose(unittest.TestCase):
                                                min_partition_ratio=1.4,
                                                limit_num_stages=True)
         self.assertEqual(termination_reason, expected_termination)
+
         for r in coramin.relaxations.relaxation_data_objects(block=relaxed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
         for r in coramin.relaxations.relaxation_data_objects(block=decomposed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
-        opt = pe.SolverFactory('ipopt')
-        res = opt.solve(m, tee=False)
-        relaxed_res = opt.solve(relaxed_m, tee=False)
-        decomposed_res = opt.solve(decomposed_m, tee=False)
+        relaxed_res = opt.solve(relaxed_m, tee=True)
+        decomposed_res = opt.solve(decomposed_m, tee=True)
+
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(decomposed_res.solver.termination_condition, pe.TerminationCondition.optimal)
@@ -460,8 +469,8 @@ class TestDecompose(unittest.TestCase):
         decomposed_val = pe.value(decomposed_obj.expr)
         relaxed_rel_diff = abs(val - relaxed_val) / val
         decomposed_rel_diff = abs(val - decomposed_val) / val
-        self.assertAlmostEqual(relaxed_rel_diff, 0)
-        self.assertAlmostEqual(decomposed_rel_diff, 0)
+        self.assertAlmostEqual(relaxed_rel_diff, 0, 5)
+        self.assertAlmostEqual(decomposed_rel_diff, 0, 5)
 
         relaxed_vars = list(coramin.relaxations.nonrelaxation_component_data_objects(relaxed_m,
                                                                                      pe.Var,
