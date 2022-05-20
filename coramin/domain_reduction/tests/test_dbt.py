@@ -203,7 +203,7 @@ class TestSplit(unittest.TestCase):
         g.add_edge(v5, c2)
         g.add_edge(v6, c2)
 
-        tree, partitioning_ratio = split_metis(graph=g)
+        tree, partitioning_ratio = split_metis(graph=g, model=m)
         self.assertAlmostEqual(partitioning_ratio, 3*12/(14*1+6*2+6*2))
 
         children = list(tree.children)
@@ -433,11 +433,11 @@ class TestDecompose(unittest.TestCase):
         md = ModelData.read(filename=os.path.join(pglib_dir, case))
         m, scaled_md = create_psv_acopf_model(md)
         opt = pe.SolverFactory('ipopt')
-        res = opt.solve(m, tee=True)
+        res = opt.solve(m, tee=False)
 
         relaxed_m = coramin.relaxations.relax(m,
                                               in_place=False,
-                                              use_fbbt=True,
+                                              use_fbbt=False,
                                               fbbt_options={'deactivate_satisfied_constraints': True,
                                                             'max_iter': 2},
                                               use_alpha_bb=False)
@@ -448,6 +448,8 @@ class TestDecompose(unittest.TestCase):
                                                min_partition_ratio=1.4,
                                                limit_num_stages=True)
         self.assertEqual(termination_reason, expected_termination)
+        if expected_termination == coramin.domain_reduction.dbt.DecompositionStatus.normal:
+            self.assertGreaterEqual(decomposed_m.num_stages(), 2)
 
         for r in coramin.relaxations.relaxation_data_objects(block=relaxed_m, descend_into=True,
                                                              active=True, sort=True):
@@ -455,8 +457,8 @@ class TestDecompose(unittest.TestCase):
         for r in coramin.relaxations.relaxation_data_objects(block=decomposed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
-        relaxed_res = opt.solve(relaxed_m, tee=True)
-        decomposed_res = opt.solve(decomposed_m, tee=True)
+        relaxed_res = opt.solve(relaxed_m, tee=False)
+        decomposed_res = opt.solve(decomposed_m, tee=False)
 
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
@@ -476,6 +478,7 @@ class TestDecompose(unittest.TestCase):
                                                                                      pe.Var,
                                                                                      sort=True,
                                                                                      descend_into=True))
+        relaxed_vars = [v for v in relaxed_vars if not v.fixed]
         relaxed_cons = list(coramin.relaxations.nonrelaxation_component_data_objects(relaxed_m,
                                                                                      pe.Constraint,
                                                                                      active=True,
@@ -506,17 +509,57 @@ class TestDecompose(unittest.TestCase):
         relaxed_vars_mapped = list()
         for i in relaxed_vars:
             relaxed_vars_mapped.append(component_map[i])
-        var_diff = ComponentSet(decomposed_vars) - ComponentSet(relaxed_vars_mapped)
-        vars_in_linking_cons = ComponentSet()
+        relaxed_vars_mapped = ComponentSet(relaxed_vars_mapped)
+        var_diff = ComponentSet(decomposed_vars) - relaxed_vars_mapped
+        extra_vars = ComponentSet()
         for c in linking_cons:
             for v in identify_variables(c.body, include_fixed=True):
-                vars_in_linking_cons.add(v)
+                extra_vars.add(v)
+        for v in coramin.relaxations.nonrelaxation_component_data_objects(decomposed_m, pe.Var, descend_into=True):
+            if 'dbt_partition_vars' in str(v) or 'obj_var' in str(v):
+                extra_vars.add(v)
+        extra_vars = extra_vars - relaxed_vars_mapped
+        partition_cons = ComponentSet()
+        obj_cons = ComponentSet()
+        for c in coramin.relaxations.nonrelaxation_component_data_objects(decomposed_m, pe.Constraint, active=True, descend_into=True):
+            if 'dbt_partition_cons' in str(c):
+                partition_cons.add(c)
+            elif 'obj_con' in str(c):
+                obj_cons.add(c)
         for v in var_diff:
-            self.assertIn(v, vars_in_linking_cons)
-        var_diff = ComponentSet(relaxed_vars_mapped) - ComponentSet(decomposed_vars)
+            self.assertIn(v, extra_vars)
+        var_diff = relaxed_vars_mapped - ComponentSet(decomposed_vars)
         self.assertEqual(len(var_diff), 0)
-        self.assertEqual(len(relaxed_vars) + len(linking_cons), len(decomposed_vars))
-        self.assertEqual(len(relaxed_cons) + len(linking_cons), len(decomposed_cons))
+        self.assertEqual(len(relaxed_vars) + len(extra_vars), len(decomposed_vars))
+
+        rcs = list()
+        for i in relaxed_cons + linking_cons + list(partition_cons) + list(obj_cons):
+            rcs.append(str(i))
+        dcs = [str(i) for i in decomposed_cons]
+
+        def _reformat(s: str) -> str:
+            s = s.split('.cons')
+            if len(s) > 1:
+                s = s[1]
+                s = s.lstrip('[')
+                s = s.rstrip(']')
+            elif s[0].startswith('cons'):
+                s = s[0]
+                s = s.lstrip('cons')
+                s = s.lstrip('[')
+                s = s.rstrip(']')
+            else:
+                s = s[0]
+            s = s.replace('"', '')
+            s = s.replace("'", "")
+            return s
+
+        rcs = set([_reformat(i) for i in rcs])
+        dcs = set([_reformat(i) for i in dcs])
+
+        self.assertEqual(rcs, dcs)
+
+        # self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(partition_cons) - len(partition_cons)/3 + len(obj_cons), len(decomposed_cons))
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
     def test_decompose1(self):

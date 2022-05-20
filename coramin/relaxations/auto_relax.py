@@ -864,7 +864,10 @@ class _FactorableRelaxationVisitor(ExpressionValueVisitor):
             return True, node
 
         if node.is_variable_type():
-            self.degree_map[node] = 1
+            if node.fixed:
+                self.degree_map[node] = 0
+            else:
+                self.degree_map[node] = 1
             return True, node
 
         if not node.is_expression_type():
