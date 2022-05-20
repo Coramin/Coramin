@@ -3,7 +3,7 @@ from distutils.core import Extension
 
 
 setup(name='coramin',
-      version='0.2.2',
+      version='0.2.3.dev0',
       packages=find_packages(),
       ext_modules=[],
       description='Coramin: Pyomo tools for MINLP',
