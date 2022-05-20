@@ -433,7 +433,7 @@ class TestDecompose(unittest.TestCase):
         md = ModelData.read(filename=os.path.join(pglib_dir, case))
         m, scaled_md = create_psv_acopf_model(md)
         opt = pe.SolverFactory('ipopt')
-        res = opt.solve(m, tee=True)
+        res = opt.solve(m, tee=False)
 
         relaxed_m = coramin.relaxations.relax(m,
                                               in_place=False,
@@ -457,8 +457,8 @@ class TestDecompose(unittest.TestCase):
         for r in coramin.relaxations.relaxation_data_objects(block=decomposed_m, descend_into=True,
                                                              active=True, sort=True):
             r.rebuild(build_nonlinear_constraint=True)
-        relaxed_res = opt.solve(relaxed_m, tee=True)
-        decomposed_res = opt.solve(decomposed_m, tee=True)
+        relaxed_res = opt.solve(relaxed_m, tee=False)
+        decomposed_res = opt.solve(decomposed_m, tee=False)
 
         self.assertEqual(res.solver.termination_condition, pe.TerminationCondition.optimal)
         self.assertEqual(relaxed_res.solver.termination_condition, pe.TerminationCondition.optimal)
@@ -531,22 +531,35 @@ class TestDecompose(unittest.TestCase):
         var_diff = relaxed_vars_mapped - ComponentSet(decomposed_vars)
         self.assertEqual(len(var_diff), 0)
         self.assertEqual(len(relaxed_vars) + len(extra_vars), len(decomposed_vars))
-        print('\n\n\nlen(relaxed_cons): ', len(relaxed_cons))
-        for i in relaxed_cons:
-            print(i)
-        print('\n\n\nlen(linking_cons): ', len(linking_cons))
-        for i in linking_cons:
-            print(i)
-        print('\n\n\nlen(partition_cons): ', len(partition_cons))
-        for i in partition_cons:
-            print(i)
-        print('\n\n\nlen(obj_cons): ', len(obj_cons))
-        for i in obj_cons:
-            print(i)
-        print('\n\n\nlen(decomposed_cons): ', len(decomposed_cons))
-        for i in decomposed_cons:
-            print(i)
-        self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(partition_cons) - len(partition_cons)/3 + len(obj_cons), len(decomposed_cons))
+
+        rcs = list()
+        for i in relaxed_cons + linking_cons + list(partition_cons) + list(obj_cons):
+            rcs.append(str(i))
+        dcs = [str(i) for i in decomposed_cons]
+
+        def _reformat(s: str) -> str:
+            s = s.split('.cons')
+            if len(s) > 1:
+                s = s[1]
+                s = s.lstrip('[')
+                s = s.rstrip(']')
+            elif s[0].startswith('cons'):
+                s = s[0]
+                s = s.lstrip('cons')
+                s = s.lstrip('[')
+                s = s.rstrip(']')
+            else:
+                s = s[0]
+            s = s.replace('"', '')
+            s = s.replace("'", "")
+            return s
+
+        rcs = set([_reformat(i) for i in rcs])
+        dcs = set([_reformat(i) for i in dcs])
+
+        self.assertEqual(rcs, dcs)
+
+        # self.assertEqual(len(relaxed_cons) + len(linking_cons) + len(partition_cons) - len(partition_cons)/3 + len(obj_cons), len(decomposed_cons))
         self.assertEqual(len(relaxed_rels), len(decomposed_rels))
 
     def test_decompose1(self):
