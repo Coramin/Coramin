@@ -28,6 +28,7 @@ from collections import defaultdict
 from pyomo.core.expr import numeric_expr
 from pyomo.core.expr.visitor import ExpressionValueVisitor, nonpyomo_leaf_types
 from pyomo.common.modeling import unique_component_name
+from coramin.relaxations.split_expr import flatten_expr
 
 
 logger = logging.getLogger(__name__)
@@ -363,121 +364,6 @@ def evaluate_partition(original_graph, tree):
     return partitioning_ratio
 
 
-def _long_sum_SumExpression(node, values):
-    new_sum_args = list()
-    for arg in values:
-        if type(arg) is numeric_expr.SumExpression:
-            new_sum_args.extend(arg.args)
-        else:
-            new_sum_args.append(arg)
-    return numeric_expr.SumExpression(new_sum_args)
-
-
-def _long_sum_ProductExpression(node, values):
-    arg1, arg2 = values
-    type1 = type(arg1)
-    type2 = type(arg2)
-
-    if type1 is not numeric_expr.SumExpression and type2 is not numeric_expr.SumExpression:
-        res = numeric_expr.ProductExpression((arg1, arg2))
-    elif type1 is numeric_expr.SumExpression and type2 is numeric_expr.SumExpression:
-        new_sum_args = list()
-        for arg1_arg in arg1.args:
-            for arg2_arg in arg2.args:
-                new_sum_args.append(numeric_expr.ProductExpression((arg1_arg, arg2_arg)))
-        res = numeric_expr.SumExpression(new_sum_args)
-    elif type1 is numeric_expr.SumExpression:
-        new_sum_args = list()
-        for arg1_arg in arg1.args:
-            new_sum_args.append(numeric_expr.ProductExpression((arg1_arg, arg2)))
-        res = numeric_expr.SumExpression(new_sum_args)
-    elif type2 is numeric_expr.SumExpression:
-        new_sum_args = list()
-        for arg2_arg in arg2.args:
-            new_sum_args.append(numeric_expr.ProductExpression((arg1, arg2_arg)))
-        res = numeric_expr.SumExpression(new_sum_args)
-    else:
-        res = numeric_expr.ProductExpression((arg1, arg2))
-
-    return res
-
-
-def _long_sum_DivisionExpression(node, values):
-    arg1, arg2 = values
-    type1 = type(arg1)
-
-    if type1 is numeric_expr.SumExpression:
-        new_sum_args = list()
-        for arg1_arg in arg1.args:
-            new_sum_args.append(numeric_expr.DivisionExpression((arg1_arg, arg2)))
-        res = numeric_expr.SumExpression(new_sum_args)
-    else:
-        res = numeric_expr.DivisionExpression((arg1, arg2))
-
-    return res
-
-
-def _long_sum_NegationExpression(node, values):
-    arg = values[0]
-    arg_type = type(arg)
-
-    if arg_type is numeric_expr.SumExpression:
-        new_sum_args = list()
-        for arg_arg in arg.args:
-            new_sum_args.append(numeric_expr.NegationExpression((arg_arg,)))
-        res = numeric_expr.SumExpression(new_sum_args)
-    else:
-        res = numeric_expr.NegationExpression((arg,))
-
-    return res
-
-
-def _long_sum_default(node, values):
-    return node.create_node_with_local_data(values)
-
-
-def _long_sum_LinearExpression(node, values):
-    return numeric_expr.SumExpression(values)
-
-
-_long_sum_map = dict()
-_long_sum_map[numeric_expr.SumExpression] = _long_sum_SumExpression
-_long_sum_map[numeric_expr.ProductExpression] = _long_sum_ProductExpression
-_long_sum_map[numeric_expr.DivisionExpression] = _long_sum_DivisionExpression
-_long_sum_map[numeric_expr.PowExpression] = _long_sum_default
-_long_sum_map[numeric_expr.MonomialTermExpression] = _long_sum_ProductExpression
-_long_sum_map[numeric_expr.NegationExpression] = _long_sum_NegationExpression
-_long_sum_map[numeric_expr.UnaryFunctionExpression] = _long_sum_default
-_long_sum_map[numeric_expr.LinearExpression] = _long_sum_LinearExpression
-_long_sum_map[numeric_expr.AbsExpression] = _long_sum_default
-
-_long_sum_map[numeric_expr.NPV_ProductExpression] = _long_sum_ProductExpression
-_long_sum_map[numeric_expr.NPV_DivisionExpression] = _long_sum_DivisionExpression
-_long_sum_map[numeric_expr.NPV_PowExpression] = _long_sum_default
-_long_sum_map[numeric_expr.NPV_SumExpression] = _long_sum_SumExpression
-_long_sum_map[numeric_expr.NPV_NegationExpression] = _long_sum_NegationExpression
-_long_sum_map[numeric_expr.NPV_UnaryFunctionExpression] = _long_sum_default
-_long_sum_map[numeric_expr.NPV_AbsExpression] = _long_sum_default
-
-
-class _LongSumVisitor(ExpressionValueVisitor):
-    def visit(self, node, values):
-        return _long_sum_map[type(node)](node, values)
-
-    def visiting_potential_leaf(self, node):
-        if type(node) in nonpyomo_leaf_types:
-            return True, node
-
-        if not node.is_expression_type():
-            return True, node
-
-        return False, None
-
-
-def _process_long_sum(expr):
-    return _LongSumVisitor().dfs_postorder_stack(expr)
-
-
 def _refine_partition(graph: nx.Graph, model: _BlockData,
                       removed_edges: Sequence[_Edge],
                       graph_a_nodes: MutableSet[_Node],
@@ -494,7 +380,7 @@ def _refine_partition(graph: nx.Graph, model: _BlockData,
         if count < 3:
             continue
 
-        new_body = _process_long_sum(c.body)
+        new_body = flatten_expr(c.body)
 
         if type(new_body) is not numeric_expr.SumExpression:
             logger.info(f'Constraint {str(c)} is contributing to {count} removed '
