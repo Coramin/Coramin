@@ -35,7 +35,6 @@ jobs:
         python setup.py develop
     - name: build pyomo extensions
       run: |
-        pyomo download-extensions
         pyomo build-extensions
     - name: Test with nose
       run: |
