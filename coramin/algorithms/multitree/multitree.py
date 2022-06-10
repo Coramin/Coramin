@@ -460,7 +460,6 @@ class MultiTree(Solver):
                     break
             if any_unfixed_vars:
                 self.nlp_solver.config.time_limit = self._remaining_time
-                self._original_model.pprint()
                 nlp_res = self.nlp_solver.solve(self._original_model)
                 if nlp_res.best_feasible_objective is not None:
                     nlp_res.solution_loader.load_vars()
