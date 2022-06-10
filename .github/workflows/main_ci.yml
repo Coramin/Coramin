@@ -33,6 +33,9 @@ jobs:
         pip install git+https://github.com/michaelbynum/pyomo.git@linear_create_node
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
+    - name: build appsi
+      run: |
+        python -c "from pyomo.contrib.appsi.build import build_appsi;build_appsi()"
     - name: Test with nose
       run: |
         nosetests -v -a '!parallel' -a n_procs=all -a n_procs=1 --with-coverage --cover-package=coramin --with-doctest --doctest-extension=.rst  --cover-xml coramin
