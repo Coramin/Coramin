@@ -478,7 +478,6 @@ class TestDecompose(unittest.TestCase):
                                                                                      pe.Var,
                                                                                      sort=True,
                                                                                      descend_into=True))
-        relaxed_vars = [v for v in relaxed_vars if not v.fixed]
         relaxed_cons = list(coramin.relaxations.nonrelaxation_component_data_objects(relaxed_m,
                                                                                      pe.Constraint,
                                                                                      active=True,
