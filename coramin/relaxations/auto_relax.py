@@ -1111,7 +1111,7 @@ def relax(
     use_fbbt=True,
     fbbt_options=None,
     perform_expression_simplification: bool = True,
-    use_alpha_bb: bool = True,
+    use_alpha_bb: bool = False,
     eigenvalue_bounder: EigenValueBounder = EigenValueBounder.GershgorinWithSimplification,
     max_vars_per_alpha_bb: int = 4,
     max_eigenvalue_for_alpha_bb: float = 100,

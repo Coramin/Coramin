@@ -18,7 +18,7 @@ class TestMINLPLibTools(unittest.TestCase):
         coramin.third_party.get_minlplib_instancedata()
         self.assertTrue(os.path.exists(os.path.join(current_dir, 'minlplib', 'instancedata.csv')))
         cases = coramin.third_party.filter_minlplib_instances()
-        self.assertEqual(len(cases), 1599)
+        self.assertEqual(len(cases), 1595)
         os.remove(os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
         os.rmdir(os.path.join(current_dir, 'minlplib'))
 
@@ -26,7 +26,7 @@ class TestMINLPLibTools(unittest.TestCase):
         current_dir = this_file_dir()
         coramin.third_party.get_minlplib_instancedata(target_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'))
 
-        total_cases = 1599
+        total_cases = 1595
         cases = coramin.third_party.filter_minlplib_instances(instancedata_filename=os.path.join(current_dir, 'minlplib', 'instancedata.csv'),
                                                               acceptable_formats='osil',
                                                               acceptable_probtype='QCQP',
@@ -147,7 +147,7 @@ class TestMINLPLibTools(unittest.TestCase):
         current_dir = this_file_dir()
         coramin.third_party.get_minlplib(download_dir=os.path.join(current_dir, 'minlplib', 'osil'))
         files = os.listdir(os.path.join(current_dir, 'minlplib', 'osil'))
-        self.assertEqual(len(files), 1598)
+        self.assertEqual(len(files), 1594)
         for i in files:
             self.assertTrue(i.endswith('.osil'))
         for i in os.listdir(os.path.join(current_dir, 'minlplib', 'osil')):
