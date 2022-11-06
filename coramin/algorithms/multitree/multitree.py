@@ -34,6 +34,7 @@ from pyomo.common.modeling import unique_component_name
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.contrib.fbbt.fbbt import BoundsManager
 import numpy as np
+from pyomo.core.expr.visitor import identify_variables
 
 
 logger = logging.getLogger(__name__)
@@ -482,12 +483,19 @@ class MultiTree(Solver):
                         v.value = 0.5 * (v.lb + v.ub)
 
             any_unfixed_vars = False
-            for v in self._nlp.component_data_objects(
-                pe.Var, descend_into=True
+            for c in self._nlp.component_data_objects(
+                pe.Constraint, active=True, descend_into=True
             ):
-                if not v.fixed:
+                for v in identify_variables(c.body, include_fixed=False):
                     any_unfixed_vars = True
                     break
+            if not any_unfixed_vars:
+                for obj in self._nlp.component_data_objects(
+                    pe.Objective, active=True, descend_into=True
+                ):
+                    for v in identify_variables(obj.expr, include_fixed=False):
+                        any_unfixed_vars = True
+                        break
 
             if any_unfixed_vars:
                 self.nlp_solver.config.time_limit = self._remaining_time
