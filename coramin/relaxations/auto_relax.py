@@ -626,6 +626,46 @@ def _relax_leaf_to_root_arctan(node, values, aux_var_map, degree_map, parent_blo
         return _aux_var
 
 
+def _relax_leaf_to_root_tan(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
+    arg = values[0]
+    degree = degree_map[arg]
+    if degree == 0:
+        res = pe.tan(arg)
+        degree_map[res] = 0
+        return res
+    elif (id(arg), 'tan') in aux_var_map:
+        _aux_var, relaxation = aux_var_map[id(arg), 'tan']
+        relaxation_side = relaxation_side_map[node]
+        if relaxation_side != relaxation.relaxation_side:
+            relaxation.relaxation_side = RelaxationSide.BOTH
+        degree_map[_aux_var] = 1
+        return _aux_var
+    else:
+        _aux_var = _get_aux_var(parent_block, pe.tan(arg))
+        arg = replace_sub_expression_with_aux_var(arg, parent_block)
+        relaxation_side = relaxation_side_map[node]
+        degree_map[_aux_var] = 1
+
+        if arg.lb >=0 and arg.ub <= math.pi/2:
+            relaxation = PWUnivariateRelaxation()
+            relaxation.set_input(
+                x=arg, aux_var=_aux_var, shape=FunctionShape.CONVEX,
+                f_x_expr=pe.tan(arg), relaxation_side=relaxation_side
+            )
+        elif arg.lb >= -math.pi/2 and arg.ub <= 0:
+            relaxation = PWUnivariateRelaxation()
+            relaxation.set_input(
+                x=arg, aux_var=_aux_var, shape=FunctionShape.CONCAVE,
+                f_x_expr=pe.tan(arg), relaxation_side=relaxation_side
+            )
+        else:
+            raise NotImplementedError('Use alpha-BB here')
+        aux_var_map[id(arg), 'tan'] = (_aux_var, relaxation)
+        setattr(parent_block.relaxations, 'rel'+str(counter), relaxation)
+        counter.increment()
+        return _aux_var
+
+
 _unary_leaf_to_root_map = dict()
 _unary_leaf_to_root_map['exp'] = _relax_leaf_to_root_exp
 _unary_leaf_to_root_map['log'] = _relax_leaf_to_root_log
@@ -634,6 +674,7 @@ _unary_leaf_to_root_map['sin'] = _relax_leaf_to_root_sin
 _unary_leaf_to_root_map['cos'] = _relax_leaf_to_root_cos
 _unary_leaf_to_root_map['atan'] = _relax_leaf_to_root_arctan
 _unary_leaf_to_root_map['sqrt'] = _relax_leaf_to_root_sqrt
+_unary_leaf_to_root_map['tan'] = _relax_leaf_to_root_tan
 
 
 def _relax_leaf_to_root_UnaryFunctionExpression(node, values, aux_var_map, degree_map, parent_block, relaxation_side_map, counter):
@@ -797,6 +838,11 @@ def _relax_root_to_leaf_arctan(node, relaxation_side_map):
     relaxation_side_map[arg] = RelaxationSide.BOTH
 
 
+def _relax_root_to_leaf_tan(node, relaxation_side_map):
+    arg = node.args[0]
+    relaxation_side_map[arg] = RelaxationSide.BOTH
+
+
 _unary_root_to_leaf_map = dict()
 _unary_root_to_leaf_map['exp'] = _relax_root_to_leaf_exp
 _unary_root_to_leaf_map['log'] = _relax_root_to_leaf_log
@@ -805,6 +851,7 @@ _unary_root_to_leaf_map['sin'] = _relax_root_to_leaf_sin
 _unary_root_to_leaf_map['cos'] = _relax_root_to_leaf_cos
 _unary_root_to_leaf_map['atan'] = _relax_root_to_leaf_arctan
 _unary_root_to_leaf_map['sqrt'] = _relax_root_to_leaf_sqrt
+_unary_root_to_leaf_map['tan'] = _relax_root_to_leaf_tan
 
 
 def _relax_root_to_leaf_UnaryFunctionExpression(node, relaxation_side_map):

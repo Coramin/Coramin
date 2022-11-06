@@ -30,7 +30,7 @@ jobs:
         pip install mpi4py
         pip install metis
         pip install git+https://github.com/cog-imperial/suspect.git
-        pip install git+https://github.com/michaelbynum/pyomo.git@linear_create_node
+        pip install git+https://github.com/michaelbynum/pyomo.git@gurobi_del
         pip install git+https://github.com/grid-parity-exchange/Egret.git
         python setup.py develop
     - name: build pyomo extensions
