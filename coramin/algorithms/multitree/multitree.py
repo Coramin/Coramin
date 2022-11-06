@@ -576,7 +576,7 @@ class MultiTree(Solver):
             elif (
                 aux_val < rhs_val - self.config.feasibility_tolerance
                 and b.relaxation_side in {RelaxationSide.BOTH, RelaxationSide.UNDER}
-                and not b.is_rhs_concave()
+                and not b.is_rhs_convex()
             ):
                 dev_list.append((b, rhs_val - aux_val))
 
