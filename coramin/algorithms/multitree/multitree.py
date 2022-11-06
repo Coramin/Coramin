@@ -460,7 +460,6 @@ class MultiTree(Solver):
                     break
             if any_unfixed_vars:
                 self.nlp_solver.config.time_limit = self._remaining_time
-                self._original_model.pprint()
                 nlp_res = self.nlp_solver.solve(self._original_model)
                 if nlp_res.best_feasible_objective is not None:
                     nlp_res.solution_loader.load_vars()
@@ -795,6 +794,7 @@ class MultiTree(Solver):
         return max(0.0, self.config.time_limit - self._elapsed_time)
 
     def _perform_obbt(self, vars_to_tighten):
+        safety_tol = 1e-4
         self._iter += 1
         orig_lbs = list()
         orig_ubs = list()
@@ -813,18 +813,26 @@ class MultiTree(Solver):
                      objective_bound=self._best_feasible_objective,
                      with_progress_bar=self.config.show_obbt_progress_bar,
                      time_limit=self._remaining_time)
-        for r in self._relaxation_objects:
-            r.rebuild()
         new_lbs = list()
         new_ubs = list()
-        for v in vars_to_tighten:
+        for ndx, v in enumerate(vars_to_tighten):
             v_lb, v_ub = v.bounds
             if v_lb is None:
                 v_lb = -math.inf
             if v_ub is None:
                 v_ub = math.inf
+            v_lb -= safety_tol
+            v_ub += safety_tol
+            if v_lb < orig_lbs[ndx]:
+                v_lb = orig_lbs[ndx]
+            if v_ub > orig_ubs[ndx]:
+                v_ub = orig_ubs[ndx]
+            v.setlb(v_lb)
+            v.setub(v_ub)
             new_lbs.append(v_lb)
             new_ubs.append(v_ub)
+        for r in self._relaxation_objects:
+            r.rebuild()
         new_lbs = np.array(new_lbs)
         new_ubs = np.array(new_ubs)
         lb_diff = new_lbs - orig_lbs
