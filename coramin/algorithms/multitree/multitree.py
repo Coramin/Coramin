@@ -24,7 +24,8 @@ import logging
 from coramin.relaxations.auto_relax import relax
 from coramin.relaxations.iterators import relaxation_data_objects
 from coramin.utils.coramin_enums import RelaxationSide, Effort, EigenValueBounder
-from coramin.domain_reduction import push_integers, pop_integers, collect_vars_to_tighten, perform_obbt
+from coramin.domain_reduction.dbt import push_integers, pop_integers, collect_vars_to_tighten
+from coramin.domain_reduction.obbt import perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.objective import _GeneralObjectiveData
