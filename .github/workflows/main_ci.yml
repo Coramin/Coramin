@@ -38,9 +38,9 @@ jobs:
     - name: Test with nose
       run: |
         coverage run --source=. --rcfile=setup.cfg -m pytest -v -m "serial or (parallel and (one_proc or all_proc))" ./
-	mpirun -np 2 -oversubscribe coverage run --source=. --rcfile=setup.cfg -m mpi4py -m pytest -v -m "parallel and (two_proc or all_proc)" ./
-	coverage combine
-	coverage xml
+        mpirun -np 2 -oversubscribe coverage run --source=. --rcfile=setup.cfg -m mpi4py -m pytest -v -m "parallel and (two_proc or all_proc)" ./
+        coverage combine
+        coverage xml
         coverage report -m
     - name: upload coverage
       uses: codecov/codecov-action@v3
