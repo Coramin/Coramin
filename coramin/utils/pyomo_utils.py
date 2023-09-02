@@ -24,9 +24,9 @@ def get_objective(m):
 
 
 def simplify_expr(expr):
-    if is_fixed(expr):
-        return pe.value(expr)
-    else:
-        om, se = sympyify_expression(expr)
-        se = se.simplify()
-        return sympy2pyomo_expression(se, om)
+    om, se = sympyify_expression(expr)
+    se = se.simplify()
+    new_expr = sympy2pyomo_expression(se, om)
+    if is_fixed(new_expr):
+        new_expr = pe.value(new_expr)
+    return new_expr
