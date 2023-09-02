@@ -12,7 +12,7 @@ from pyomo.core.expr.visitor import identify_variables
 from pyomo.common.collections import ComponentSet
 from pyomo.core.expr.compare import compare_expressions
 from pyomo.repn.standard_repn import generate_standard_repn
-from pyomo.util.report_scaling import _check_coefficents
+from pyomo.util.report_scaling import _check_coefficients
 from pyomo.core.expr.calculus.derivatives import differentiate, Modes, reverse_sd
 from pyomo.contrib.fbbt.fbbt import compute_bounds_on_expr
 from pyomo.core.expr import sympy_tools
@@ -169,7 +169,7 @@ def _check_scaling(m: _BlockData, rel: coramin.relaxations.BaseRelaxationData) -
     cons_with_large_coefs = dict()
     cons_with_small_coefs = dict()
     for c in m.component_data_objects(pe.Constraint, descend_into=True, active=True):
-        _check_coefficents(c, c.body, rel.large_coef, rel.small_coef, cons_with_large_coefs, cons_with_small_coefs)
+        _check_coefficients(c, c.body, rel.large_coef, rel.small_coef, cons_with_large_coefs, cons_with_small_coefs)
     passed = len(cons_with_large_coefs) == 0 and len(cons_with_small_coefs) == 0
     return passed
 
