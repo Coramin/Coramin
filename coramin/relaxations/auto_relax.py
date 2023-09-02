@@ -694,6 +694,7 @@ def _relax_leaf_to_root_GeneralExpression(node, values, aux_var_map, degree_map,
 _relax_leaf_to_root_map = dict()
 _relax_leaf_to_root_map[numeric_expr.ProductExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.SumExpression] = _relax_leaf_to_root_SumExpression
+_relax_leaf_to_root_map[numeric_expr.LinearExpression] = _relax_leaf_to_root_SumExpression
 _relax_leaf_to_root_map[numeric_expr.MonomialTermExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.NegationExpression] = _relax_leaf_to_root_NegationExpression
 _relax_leaf_to_root_map[numeric_expr.PowExpression] = _relax_leaf_to_root_PowExpression
@@ -869,6 +870,7 @@ def _relax_root_to_leaf_GeneralExpression(node, relaxation_side_map):
 _relax_root_to_leaf_map = dict()
 _relax_root_to_leaf_map[numeric_expr.ProductExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.SumExpression] = _relax_root_to_leaf_SumExpression
+_relax_root_to_leaf_map[numeric_expr.LinearExpression] = _relax_root_to_leaf_SumExpression
 _relax_root_to_leaf_map[numeric_expr.MonomialTermExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.NegationExpression] = _relax_root_to_leaf_NegationExpression
 _relax_root_to_leaf_map[numeric_expr.PowExpression] = _relax_root_to_leaf_PowExpression
