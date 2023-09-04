@@ -40,11 +40,12 @@ def active_vars(m, include_fixed=False):
                 seen.add(v_id)
                 yield v
     obj = get_objective(m)
-    for v in identify_variables(obj.expr, include_fixed=include_fixed):
-        v_id = id(v)
-        if v_id not in seen:
-            seen.add(v_id)
-            yield v
+    if obj is not None:
+        for v in identify_variables(obj.expr, include_fixed=include_fixed):
+            v_id = id(v)
+            if v_id not in seen:
+                seen.add(v_id)
+                yield v
 
 
 def simplify_expr(expr):
