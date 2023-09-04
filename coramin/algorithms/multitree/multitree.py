@@ -29,13 +29,14 @@ from coramin.domain_reduction.obbt import perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.objective import _GeneralObjectiveData
-from coramin.utils.pyomo_utils import get_objective
+from coramin.utils.pyomo_utils import get_objective, active_vars
 from pyomo.common.collections.component_set import ComponentSet
 from pyomo.common.modeling import unique_component_name
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.contrib.fbbt.fbbt import BoundsManager
 import numpy as np
 from pyomo.core.expr.visitor import identify_variables
+from coramin.clone import clone_active_flat
 
 
 logger = logging.getLogger(__name__)
@@ -868,6 +869,7 @@ class MultiTree(Solver):
         return num_lb_improved, num_ub_improved, avg_lb_improvement, avg_ub_improvement
 
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> MultiTreeResults:
+        model = clone_active_flat(model)
         self._re_init()
 
         self._start_time = time.time()

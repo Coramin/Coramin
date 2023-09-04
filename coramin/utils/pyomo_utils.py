@@ -1,6 +1,8 @@
 import pyomo.environ as pe
 from pyomo.core.expr.sympy_tools import sympyify_expression, sympy2pyomo_expression
 from pyomo.core.expr.numvalue import is_fixed
+from pyomo.common.collections import ComponentSet
+from pyomo.core.expr.visitor import identify_variables
 
 
 def get_objective(m):
@@ -21,6 +23,28 @@ def get_objective(m):
             raise ValueError('Found multiple active objectives')
         obj = o
     return obj
+
+
+def unfixed_vars(m, descend_into=True, active=True):
+    for v in m.component_data_objects(pe.Var, descend_into=descend_into, active=active):
+        if not v.is_fixed():
+            yield v
+
+
+def active_vars(m, include_fixed=False):
+    seen = set()
+    for c in m.component_data_objects(pe.Constraint, active=True, descend_into=True):
+        for v in identify_variables(c.body, include_fixed=include_fixed):
+            v_id = id(v)
+            if v_id not in seen:
+                seen.add(v_id)
+                yield v
+    obj = get_objective(m)
+    for v in identify_variables(obj.expr, include_fixed=include_fixed):
+        v_id = id(v)
+        if v_id not in seen:
+            seen.add(v_id)
+            yield v
 
 
 def simplify_expr(expr):
