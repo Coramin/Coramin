@@ -37,7 +37,7 @@ jobs:
         pyomo build-extensions
     - name: Test with nose
       run: |
-        coverage run --source=. --rcfile=setup.cfg -m pytest -v -m "serial or (parallel and (one_proc or all_proc)) or not parallel" ./
+        coverage run --source=. --rcfile=setup.cfg -m pytest -v --durations=0 -m "serial or (parallel and (one_proc or all_proc)) or not parallel" ./
         mpirun -np 2 -oversubscribe coverage run --source=. --rcfile=setup.cfg -m mpi4py -m pytest -v -m "parallel and (two_proc or all_proc)" ./
         coverage combine
         coverage xml
