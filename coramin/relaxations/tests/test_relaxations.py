@@ -494,16 +494,24 @@ class TestRelaxationBasics(unittest.TestCase):
     def active_partition_helper(self, rel: coramin.relaxations.BasePWRelaxationData, partition_points):
         rhs_var = rel.get_rhs_vars()[0]
         sample_points = _grid_rhs_vars([rhs_var], 30)
+        partition_points.sort()
         for pt in sample_points:
             pt = pt[0]
             rhs_var.value = pt
             active_lb, active_ub = rel.get_active_partitions()[rhs_var]
-            expected_lb = [i for i in partition_points if i <= pt]
-            expected_lb.sort()
-            expected_lb = expected_lb[-1]
-            expected_ub = [i for i in partition_points if i >= pt]
-            expected_ub.sort()
-            expected_ub = expected_ub[0]
+            assert partition_points[0] <= pt
+            assert partition_points[-1] >= pt
+
+            ub_ndx = 0
+            while partition_points[ub_ndx] < pt:
+                if ub_ndx == len(partition_points) - 1:
+                    break
+                ub_ndx += 1
+            if ub_ndx == 0:
+                ub_ndx = 1
+            lb_ndx = ub_ndx - 1
+            expected_lb = partition_points[lb_ndx]
+            expected_ub = partition_points[ub_ndx]
             self.assertAlmostEqual(active_lb, expected_lb)
             self.assertAlmostEqual(active_ub, expected_ub)
 
