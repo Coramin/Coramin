@@ -32,7 +32,7 @@ def clone_active_flat(m1):
     all_vars.update(repn.linear_vars)
     all_vars.update(repn.nonlinear_vars)
     obj_expr = repn.to_expression()
-    m2.obj = pe.Objective(expr=obj_expr)
+    m2.obj = pe.Objective(expr=obj_expr, sense=obj.sense)
 
     rel_list = list()
     for r in iterators.relaxation_data_objects(
