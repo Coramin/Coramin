@@ -589,14 +589,18 @@ def convert_pyomo_model_to_bipartite_graph(m: _BlockData):
     var_map = pe.ComponentMap()
 
     for v in nonrelaxation_component_data_objects(m, pe.Var, sort=True, descend_into=True):
-        if v.fixed:
-            continue
+        # we need to include fixed variables here because the fixed variables need
+        # to be in the new model just like mutable parameters do. The fixed variables
+        # do not contribute to edges in the bipartite graph, but they are still
+        # in the constraints
         var_map[v] = _VarNode(v)
         graph.add_node(var_map[v])
 
     for b in relaxation_data_objects(m, descend_into=True, active=True, sort=True):
         node2 = _RelNode(b)
         for v in (list(b.get_rhs_vars()) + [b.get_aux_var()]):
+            if v.fixed:
+                continue
             node1 = var_map[v]
             graph.add_edge(node1, node2)
 
@@ -740,6 +744,9 @@ def _eliminate_mutable_params(model):
     sub_map = dict()
     for p in nonrelaxation_component_data_objects(model, pe.Param, descend_into=True):
         sub_map[id(p)] = p.value
+    for p in nonrelaxation_component_data_objects(model, pe.Var, descend_into=True):
+        if p.fixed:
+            sub_map[id(p)] = p.value
 
     for c in nonrelaxation_component_data_objects(model, pe.Constraint, active=True, descend_into=True):
         if c.lower is None:
@@ -790,6 +797,7 @@ def _decompose_model(model: _BlockData, max_leaf_nnz: Optional[int] = None,
     # doing OBBT
     _reformulate_objective(model)
     # we don't want the original param objects to be in the new model
+    # why???
     _eliminate_mutable_params(model)
 
     graph = convert_pyomo_model_to_bipartite_graph(model)
