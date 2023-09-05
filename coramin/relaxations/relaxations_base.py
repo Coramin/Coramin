@@ -698,13 +698,24 @@ class BasePWRelaxationData(BaseRelaxationData):
         ans = ComponentMap()
         for var, pts in self._partitions.items():
             val = pyo.value(var)
-            lower = var.lb
-            upper = var.ub
-            for p in pts:
-                if val >= p and p > lower:
-                    lower = p
-                if val <= p and p < upper:
-                    upper = p
+            lower = None
+            upper = None
+            if not (pts[0] - 1e-6 <= val <= pts[-1] + 1e-6):
+                raise ValueError('The variable value must be within the variable bounds')
+            if val < pts[0]:
+                lower = pts[0]
+                upper = pts[1]
+            elif val > pts[-1]:
+                lower = pts[-2]
+                upper = pts[-1]
+            else:
+                for p1, p2 in zip(pts[0:-1], pts[1:]):
+                    if p1 <= val <= p2:
+                        lower = p1
+                        upper = p2
+                        break
+            assert lower is not None
+            assert upper is not None
             ans[var] = lower, upper
         return ans
 

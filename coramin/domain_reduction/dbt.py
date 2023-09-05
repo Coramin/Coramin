@@ -15,7 +15,11 @@ from coramin.relaxations.iterators import relaxation_data_objects, nonrelaxation
 from pyomo.core.expr.visitor import replace_expressions
 import logging
 import networkx
-import metis
+try:
+    import metis
+    metis_available = True
+except ImportError:
+    metis_available = False    
 import numpy as np
 import math
 from pyomo.core.base.block import declare_custom_block, _BlockData
@@ -306,6 +310,8 @@ def choose_metis_partition(graph, max_size_diff_trials, seed_trials):
     max_size_diff_selected: float
     seed_selected: float
     """
+    if not metis_available:
+        raise ImportError('Cannot perform graph partitioning without metis. Please install metis (including the python bindings).')
     cut_list = list()
     for _max_size_diff in max_size_diff_trials:
         for _seed in seed_trials:
@@ -486,6 +492,8 @@ def split_metis(graph, model):
     -------
     tree: _Tree
     """
+    if not metis_available:
+        raise ImportError('Cannot perform graph partitioning without metis. Please install metis (including the python bindings).')
     max_size_diff, seed = choose_metis_partition(graph, max_size_diff_trials=[0.15], seed_trials=list(range(10)))
     if seed is None:
         edgecuts, parts = metis.part_graph(_networkx_to_adjacency_list(graph), nparts=2, ubvec=[1 + max_size_diff])

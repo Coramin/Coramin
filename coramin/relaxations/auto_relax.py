@@ -1,5 +1,5 @@
 import pyomo.environ as pe
-from pyomo.common.collections import ComponentMap
+from pyomo.common.collections import ComponentMap, ComponentSet
 import pyomo.core.expr.numeric_expr as numeric_expr
 from pyomo.core.expr.visitor import ExpressionValueVisitor
 from pyomo.core.expr.numvalue import (
@@ -25,7 +25,7 @@ from pyomo.repn.standard_repn import generate_standard_repn
 from pyomo.contrib.fbbt import interval
 from pyomo.core.expr.compare import convert_expression_to_prefix_notation
 from .split_expr import split_expr
-from coramin.utils.pyomo_utils import simplify_expr
+from coramin.utils.pyomo_utils import simplify_expr, active_vars
 from .hessian import Hessian
 from typing import MutableMapping, Tuple, Union, Optional
 from pyomo.core.base.block import _BlockData
@@ -694,6 +694,7 @@ def _relax_leaf_to_root_GeneralExpression(node, values, aux_var_map, degree_map,
 _relax_leaf_to_root_map = dict()
 _relax_leaf_to_root_map[numeric_expr.ProductExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.SumExpression] = _relax_leaf_to_root_SumExpression
+_relax_leaf_to_root_map[numeric_expr.LinearExpression] = _relax_leaf_to_root_SumExpression
 _relax_leaf_to_root_map[numeric_expr.MonomialTermExpression] = _relax_leaf_to_root_ProductExpression
 _relax_leaf_to_root_map[numeric_expr.NegationExpression] = _relax_leaf_to_root_NegationExpression
 _relax_leaf_to_root_map[numeric_expr.PowExpression] = _relax_leaf_to_root_PowExpression
@@ -869,6 +870,7 @@ def _relax_root_to_leaf_GeneralExpression(node, relaxation_side_map):
 _relax_root_to_leaf_map = dict()
 _relax_root_to_leaf_map[numeric_expr.ProductExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.SumExpression] = _relax_root_to_leaf_SumExpression
+_relax_root_to_leaf_map[numeric_expr.LinearExpression] = _relax_root_to_leaf_SumExpression
 _relax_root_to_leaf_map[numeric_expr.MonomialTermExpression] = _relax_root_to_leaf_ProductExpression
 _relax_root_to_leaf_map[numeric_expr.NegationExpression] = _relax_root_to_leaf_NegationExpression
 _relax_root_to_leaf_map[numeric_expr.PowExpression] = _relax_root_to_leaf_PowExpression
@@ -1217,7 +1219,13 @@ def relax(
         it = appsi.fbbt.IntervalTightener()
         for k, v in fbbt_options.items():
             setattr(it.config, k, v)
+        original_active_vars = ComponentSet(active_vars(m, include_fixed=False))
         it.perform_fbbt(m)
+        new_active_vars = ComponentSet(active_vars(m, include_fixed=False))
+        # some variables may have become stale by deactivating satisfied constraints,
+        # so we need to fix them.
+        for v in original_active_vars - new_active_vars:
+            v.fix(0.5 * (v.lb + v.ub))
 
     if descend_into is None:
         descend_into = (pe.Block, Disjunct)

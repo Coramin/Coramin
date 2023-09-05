@@ -29,13 +29,14 @@ from coramin.domain_reduction.obbt import perform_obbt
 import time
 from pyomo.core.base.var import _GeneralVarData
 from pyomo.core.base.objective import _GeneralObjectiveData
-from coramin.utils.pyomo_utils import get_objective
+from coramin.utils.pyomo_utils import get_objective, active_vars
 from pyomo.common.collections.component_set import ComponentSet
 from pyomo.common.modeling import unique_component_name
 from pyomo.common.errors import InfeasibleConstraintException
 from pyomo.contrib.fbbt.fbbt import BoundsManager
 import numpy as np
 from pyomo.core.expr.visitor import identify_variables
+from coramin.clone import clone_active_flat
 
 
 logger = logging.getLogger(__name__)
@@ -868,6 +869,7 @@ class MultiTree(Solver):
         return num_lb_improved, num_ub_improved, avg_lb_improvement, avg_ub_improvement
 
     def solve(self, model: _BlockData, timer: HierarchicalTimer = None) -> MultiTreeResults:
+        model = clone_active_flat(model)
         self._re_init()
 
         self._start_time = time.time()
@@ -954,12 +956,20 @@ class MultiTree(Solver):
                 break
 
             if rel_res.best_feasible_objective is not None:
+                self._oa_cut_helper(self.config.feasibility_tolerance)
+                self._partition_helper()
+
                 integer_var_values, rhs_var_bounds = self._get_nlp_specs_from_rel()
+                start_primal_bound = self._get_primal_bound()
                 nlp_res = self._solve_nlp_with_fixed_vars(
                     integer_var_values, rhs_var_bounds
                 )
-                self._oa_cut_helper(self.config.feasibility_tolerance)
-                self._partition_helper()
+                end_primal_bound = self._get_primal_bound()
+
+                if not math.isclose(start_primal_bound, end_primal_bound, rel_tol=1e-4, abs_tol=1e-4):
+                    relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
+                    num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
+                    pop_integers(relaxed_binaries, relaxed_integers)
             else:
                 self.config.solver_output_logger.warning(
                     f"relaxation did not find a feasible solution: "

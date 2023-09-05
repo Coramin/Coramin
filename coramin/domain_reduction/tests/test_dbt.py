@@ -15,8 +15,8 @@ from egret.models.acopf import create_psv_acopf_model
 import os
 from coramin.utils.pyomo_utils import get_objective
 import filecmp
-from nose.plugins.attrib import attr
 from pyomo.contrib import appsi
+import pytest
 
 
 class TestTreeBlock(unittest.TestCase):
@@ -786,7 +786,9 @@ class TestDBTWithECP(unittest.TestCase):
 
         return m
 
-    @attr(parallel=True, n_procs=[2, 3])
+    @pytest.mark.parallel
+    @pytest.mark.two_proc
+    @pytest.mark.three_proc
     def test_bounds_tightening(self):
         from mpi4py import MPI
 
