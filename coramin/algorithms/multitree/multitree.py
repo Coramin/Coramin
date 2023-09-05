@@ -72,6 +72,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.declare("large_coef", ConfigValue(domain=NonNegativeFloat))
         self.declare("safety_tol", ConfigValue(domain=NonNegativeFloat))
         self.declare("convexity_effort", ConfigValue(domain=InEnum(Effort)))
+        self.declare("obbt_at_new_incumbents", ConfigValue(domain=bool))
+        self.declare("relax_integers_for_obbt", ConfigValue(domain=bool))
 
         self.solver_output_logger = logger
         self.log_level = logging.INFO
@@ -88,6 +90,8 @@ class MultiTreeConfig(MIPSolverConfig):
         self.large_coef = 1e5
         self.safety_tol = 1e-10
         self.convexity_effort = Effort.high
+        self.obbt_at_new_incumbents: bool = True
+        self.relax_integers_for_obbt: bool = True
 
 
 def _is_problem_definitely_convex(m: _BlockData) -> bool:
@@ -502,13 +506,21 @@ class MultiTree(Solver):
             if any_unfixed_vars:
                 self.nlp_solver.config.time_limit = self._remaining_time
                 self.nlp_solver.config.load_solution = False
-                nlp_res = self.nlp_solver.solve(self._nlp)
-                if nlp_res.best_feasible_objective is not None:
+                try:
+                    nlp_res = self.nlp_solver.solve(self._nlp)
+                    solve_error = False
+                except Exception:
+                    solve_error = True
+                if not solve_error and nlp_res.best_feasible_objective is not None:
                     nlp_res.solution_loader.load_vars()
                 else:
                     self.nlp_solver.config.time_limit = self._remaining_time
-                    nlp_res = self.nlp_solver.solve(self._original_model)
-                    if nlp_res.best_feasible_objective is not None:
+                    try:
+                        nlp_res = self.nlp_solver.solve(self._original_model)
+                        solve_error = False
+                    except Exception:
+                        solve_error = True
+                    if not solve_error and nlp_res.best_feasible_objective is not None:
                         nlp_res.solution_loader.load_vars()
                         for nlp_v, orig_v in self._nlp_to_orig_map.items():
                             nlp_v.value = orig_v.value
@@ -966,10 +978,16 @@ class MultiTree(Solver):
                 )
                 end_primal_bound = self._get_primal_bound()
 
-                if not math.isclose(start_primal_bound, end_primal_bound, rel_tol=1e-4, abs_tol=1e-4):
-                    relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
+                should_terminate, reason = self._should_terminate()
+                if should_terminate:
+                    break
+
+                if self.config.obbt_at_new_incumbents and not math.isclose(start_primal_bound, end_primal_bound, rel_tol=1e-4, abs_tol=1e-4):
+                    if self.config.relax_integers_for_obbt:
+                        relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
                     num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
-                    pop_integers(relaxed_binaries, relaxed_integers)
+                    if self.config.relax_integers_for_obbt:
+                        pop_integers(relaxed_binaries, relaxed_integers)
             else:
                 self.config.solver_output_logger.warning(
                     f"relaxation did not find a feasible solution: "
