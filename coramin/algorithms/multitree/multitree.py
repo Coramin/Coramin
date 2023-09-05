@@ -956,12 +956,20 @@ class MultiTree(Solver):
                 break
 
             if rel_res.best_feasible_objective is not None:
+                self._oa_cut_helper(self.config.feasibility_tolerance)
+                self._partition_helper()
+
                 integer_var_values, rhs_var_bounds = self._get_nlp_specs_from_rel()
+                start_primal_bound = self._get_primal_bound()
                 nlp_res = self._solve_nlp_with_fixed_vars(
                     integer_var_values, rhs_var_bounds
                 )
-                self._oa_cut_helper(self.config.feasibility_tolerance)
-                self._partition_helper()
+                end_primal_bound = self._get_primal_bound()
+
+                if not math.isclose(start_primal_bound, end_primal_bound, rel_tol=1e-4, abs_tol=1e-4):
+                    relaxed_binaries, relaxed_integers = push_integers(self._relaxation)
+                    num_lb, num_ub, avg_lb, avg_ub = self._perform_obbt(vars_to_tighten)
+                    pop_integers(relaxed_binaries, relaxed_integers)
             else:
                 self.config.solver_output_logger.warning(
                     f"relaxation did not find a feasible solution: "
